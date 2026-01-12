@@ -21,6 +21,8 @@ class OrderDetailsPage extends StatelessWidget {
         return Colors.purple;
       case 'Delivered':
         return Colors.green;
+      case 'Cancelled':
+        return Colors.red;
       default:
         return Colors.grey;
     }
@@ -38,7 +40,7 @@ class OrderDetailsPage extends StatelessWidget {
         .maybeSingle();
   }
 
-  // ================= TRACKING TIMELINE =================
+  // ================= ORDER TRACKING TIMELINE =================
   Widget orderTimeline(String status) {
     final steps = [
       'Placed',
@@ -69,7 +71,7 @@ class OrderDetailsPage extends StatelessWidget {
                 if (index != steps.length - 1)
                   Container(
                     width: 2,
-                    height: 35,
+                    height: 32,
                     color:
                     isCompleted ? Colors.green : Colors.grey,
                   ),
@@ -96,10 +98,13 @@ class OrderDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = (order['order_items'] ?? []) as List;
-    final product = items.isNotEmpty ? items[0]['products'] : null;
+    final List items = (order['order_items'] ?? []) as List;
 
-    // ================= PRODUCT IMAGE =================
+    // ---------- FIRST PRODUCT ----------
+    final Map<String, dynamic>? product =
+    items.isNotEmpty ? items.first['products'] : null;
+
+    // ---------- IMAGE ----------
     String? imageUrl;
     final imagePath = product?['image_url'];
     if (imagePath != null && imagePath.toString().isNotEmpty) {
@@ -122,21 +127,39 @@ class OrderDetailsPage extends StatelessWidget {
           children: [
             // ================= PRODUCT CARD =================
             Card(
+              elevation: 2,
               child: ListTile(
                 leading: imageUrl != null
-                    ? Image.network(
-                  imageUrl,
-                  width: 60,
-                  fit: BoxFit.cover,
+                    ? ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    imageUrl,
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
+                  ),
                 )
-                    : const Icon(Icons.shopping_bag),
+                    : const Icon(
+                  Icons.shopping_bag,
+                  size: 40,
+                  color: Colors.green,
+                ),
                 title: Text(
                   product?['name'] ?? 'Product',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
-                subtitle: Text("₹${order['total_amount']}"),
+                subtitle: Text(
+                  "₹${order['total_amount']}",
+                  style: const TextStyle(fontSize: 14),
+                ),
                 trailing: Chip(
-                  label: Text(order['status']),
+                  label: Text(
+                    order['status'],
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   backgroundColor:
                   statusColor(order['status']),
                 ),
@@ -161,8 +184,11 @@ class OrderDetailsPage extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
-            Text(order['delivery_address'] ?? ''),
-            Text("Payment: Cash on Delivery"),
+            Text(order['delivery_address'] ?? '—'),
+            const SizedBox(height: 4),
+            Text(
+              "Payment Method: ${order['payment_method'] ?? 'Cash on Delivery'}",
+            ),
 
             const Divider(height: 30),
 
@@ -177,9 +203,15 @@ class OrderDetailsPage extends StatelessWidget {
               future:
               _getDeliveryPartner(order['delivery_partner_id']),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Text("Loading...");
+                }
+
+                if (!snapshot.hasData || snapshot.data == null) {
                   return const Text("Not assigned yet");
                 }
+
                 final partner = snapshot.data!;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,7 +258,9 @@ class OrderDetailsPage extends StatelessWidget {
                 backgroundColor: Colors.green,
                 minimumSize: const Size.fromHeight(45),
               ),
-              onPressed: () {},
+              onPressed: () {
+                // Next step
+              },
             ),
 
             const SizedBox(height: 10),
@@ -238,7 +272,9 @@ class OrderDetailsPage extends StatelessWidget {
                 backgroundColor: Colors.green,
                 minimumSize: const Size.fromHeight(45),
               ),
-              onPressed: () {},
+              onPressed: () {
+                // Next step
+              },
             ),
           ],
         ),
