@@ -5,33 +5,69 @@ import 'product_list.dart';
 import 'order_status.dart';
 import 'customer_offers.dart';
 import 'cart_page.dart';
+import 'profile_edit_page.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../core/language_service.dart';
 
-class CustomerHome extends StatelessWidget {
+class CustomerHome extends StatefulWidget {
   const CustomerHome({super.key});
 
-  // ================= FETCH CUSTOMER NAME =================
-  Future<String> _getCustomerName() async {
+  @override
+  State<CustomerHome> createState() => _CustomerHomeState();
+}
+
+class _CustomerHomeState extends State<CustomerHome> {
+
+  // ================= FETCH CUSTOMER PROFILE =================
+  Future<Map<String, dynamic>> _getCustomerProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
 
-    if (user == null) return "Customer";
+    if (user == null) {
+      return {
+        'name': 'Customer',
+        'avatar_url': null,
+      };
+    }
 
     final data = await Supabase.instance.client
         .from('profiles')
-        .select('name')
+        .select('name, avatar_url')
         .eq('id', user.id)
-        .single();
+        .limit(1);
 
-    return data['name'] ?? "Customer";
+    if (data.isEmpty) {
+      return {
+        'name': 'Customer',
+        'avatar_url': null,
+      };
+    }
+
+    return {
+      'name': data.first['name'] ?? 'Customer',
+      'avatar_url': data.first['avatar_url'],
+    };
+  }
+
+  // ================= FETCH ORDER COUNT =================
+  Future<int> _getOrderCount() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return 0;
+
+    final data = await Supabase.instance.client
+        .from('orders')
+        .select('id')
+        .eq('customer_id', user.id);
+
+    return data.length;
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String>(
-      future: _getCustomerName(),
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _getCustomerProfile(),
       builder: (context, snapshot) {
-        final customerName = snapshot.data ?? "Customer";
+        final customerName = snapshot.data?['name'] ?? 'Customer';
+        final avatarUrl = snapshot.data?['avatar_url'];
 
         return Scaffold(
           backgroundColor: const Color(0xFFF6F7FB),
@@ -47,36 +83,53 @@ class CustomerHome extends StatelessWidget {
           drawer: Drawer(
             child: Column(
               children: [
-                DrawerHeader(
-                  decoration: const BoxDecoration(color: Colors.green),
-                  child: Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.person,
-                            size: 32, color: Colors.green),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            customerName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                // ===== PROFILE HEADER =====
+                GestureDetector(
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ProfileEditPage()),
+                    );
+                    setState(() {}); // refresh after edit
+                  },
+                  child: DrawerHeader(
+                    decoration: const BoxDecoration(color: Colors.green),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Colors.white,
+                          backgroundImage: avatarUrl != null
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                          child: avatarUrl == null
+                              ? const Icon(Icons.person,
+                              size: 32, color: Colors.green)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              customerName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const Text(
-                            "Customer",
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        ],
-                      ),
-                    ],
+                            const Text(
+                              "Tap to edit profile",
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -85,6 +138,20 @@ class CustomerHome extends StatelessWidget {
                   title: "Home",
                   onTap: () => Navigator.pop(context),
                 ),
+
+                _drawerItem(
+                  icon: Icons.person,
+                  title: "Edit Profile",
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ProfileEditPage()),
+                    );
+                    setState(() {});
+                  },
+                ),
+
                 _drawerItem(
                   icon: Icons.shopping_bag,
                   title: "Browse Products",
@@ -102,7 +169,8 @@ class CustomerHome extends StatelessWidget {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const CartPage()),
+                      MaterialPageRoute(
+                          builder: (_) => const CartPage()),
                     );
                   },
                 ),
@@ -158,7 +226,7 @@ class CustomerHome extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Welcome $customerName ",
+                  "Welcome $customerName 👋",
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -180,13 +248,25 @@ class CustomerHome extends StatelessWidget {
                   icon: Icons.shopping_cart,
                   page: const CartPage(),
                 ),
-                _homeCard(
-                  context,
-                  title: "My Orders",
-                  subtitle: "Track your orders",
-                  icon: Icons.receipt_long,
-                  page: const OrderStatusPage(),
+
+                // ===== MY ORDERS WITH BADGE =====
+                FutureBuilder<int>(
+                  future: _getOrderCount(),
+                  builder: (context, snapshot) {
+                    final count = snapshot.data ?? 0;
+                    return _homeCard(
+                      context,
+                      title: "My Orders",
+                      subtitle: count > 0
+                          ? "You have $count orders"
+                          : "No orders yet",
+                      icon: Icons.receipt_long,
+                      page: const OrderStatusPage(),
+                      badgeCount: count,
+                    );
+                  },
                 ),
+
                 _homeCard(
                   context,
                   title: "Offers & Discounts",
@@ -209,6 +289,7 @@ class CustomerHome extends StatelessWidget {
         required String subtitle,
         required IconData icon,
         required Widget page,
+        int badgeCount = 0,
       }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
@@ -223,12 +304,28 @@ class CustomerHome extends StatelessWidget {
           backgroundColor: Colors.green.withOpacity(0.1),
           child: Icon(icon, color: Colors.green, size: 26),
         ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+        title: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 8),
+            if (badgeCount > 0)
+              CircleAvatar(
+                radius: 10,
+                backgroundColor: Colors.red,
+                child: Text(
+                  badgeCount.toString(),
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 12),
+                ),
+              ),
+          ],
         ),
         subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        trailing:
+        const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: () {
           Navigator.push(
             context,
