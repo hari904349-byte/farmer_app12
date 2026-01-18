@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../customer/profile_edit_page.dart';
 import 'assigned_orders.dart';
+import 'delivery_requests.dart';
 import '../profile/profile_edit_page.dart';
 import '../onboarding/onboarding_screen.dart';
 
@@ -126,19 +127,6 @@ class _DeliveryHomeState extends State<DeliveryHome> {
             ),
 
             _drawerItem(
-              icon: Icons.assignment,
-              title: "Assigned Orders",
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const AssignedOrdersPage(),
-                  ),
-                );
-              },
-            ),
-
-            _drawerItem(
               icon: Icons.person,
               title: "Edit Profile",
               onTap: () {
@@ -159,8 +147,8 @@ class _DeliveryHomeState extends State<DeliveryHome> {
               title: "Logout",
               onTap: () async {
                 await supabase.auth.signOut();
-
                 if (!mounted) return;
+
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
@@ -192,42 +180,68 @@ class _DeliveryHomeState extends State<DeliveryHome> {
 
             const SizedBox(height: 20),
 
-            // ===== ASSIGNED ORDERS CARD =====
-            Card(
-              elevation: 3,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(14),
-                leading: CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.green.withOpacity(0.1),
-                  child: const Icon(
-                    Icons.assignment,
-                    color: Colors.green,
-                    size: 26,
+            // 🔔 DELIVERY REQUESTS
+            _homeCard(
+              icon: Icons.notifications_active,
+              title: "Delivery Requests",
+              subtitle: "New orders waiting for delivery partner",
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DeliveryRequestsPage(),
                   ),
-                ),
-                title: const Text(
-                  "Assigned Orders",
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text("View and manage deliveries"),
-                trailing:
-                const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AssignedOrdersPage(),
-                    ),
-                  );
-                },
-              ),
+                );
+              },
+            ),
+
+            // 📦 ASSIGNED ORDERS
+            _homeCard(
+              icon: Icons.assignment,
+              title: "Assigned Orders",
+              subtitle: "Orders you have accepted",
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AssignedOrdersPage(),
+                  ),
+                );
+              },
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ================= HOME CARD =================
+  Widget _homeCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 3,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(14),
+        leading: CircleAvatar(
+          radius: 24,
+          backgroundColor: Colors.green.withOpacity(0.1),
+          child: Icon(icon, color: Colors.green, size: 26),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: onTap,
       ),
     );
   }

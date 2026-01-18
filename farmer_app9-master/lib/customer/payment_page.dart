@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'order_success_page.dart';
@@ -26,8 +27,10 @@ class _PaymentPageState extends State<PaymentPage> {
   final supabase = Supabase.instance.client;
 
   String paymentMethod = "COD";
+  String deliveryOption = "direct"; // direct | delivery_partner
   bool placingOrder = false;
 
+  // ================= PLACE ORDER =================
   Future<void> placeOrder() async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
@@ -42,35 +45,50 @@ class _PaymentPageState extends State<PaymentPage> {
     setState(() => placingOrder = true);
 
     try {
-      // ================= STEP 1: SAFELY GET FARMER ID =================
+      // ================= GET FARMER ID (✅ FIXED) =================
       final firstItem = widget.cartItems.first;
+      final productId = firstItem['product_id'];
 
-      final product = firstItem['products'];
-      if (product == null || product['farmer_id'] == null) {
-        throw Exception("Farmer ID not found in cart items");
+      final productData = await supabase
+          .from('products')
+          .select('farmer_id')
+          .eq('id', productId)
+          .single();
+
+      final String farmerId = productData['farmer_id'];
+
+      if (farmerId.isEmpty) {
+        throw Exception("Farmer not found for this product");
       }
 
-      final farmerId = product['farmer_id'];
+      // ================= OTP GENERATION =================
+      final String? pickupOtp = deliveryOption == 'direct'
+          ? (1000 + Random().nextInt(9000)).toString()
+          : null;
 
-      // ================= STEP 2: INSERT ORDER =================
-      final order = await supabase
-          .from('orders')
-          .insert({
+      final String? deliveryOtp = deliveryOption == 'delivery_partner'
+          ? (1000 + Random().nextInt(9000)).toString()
+          : null;
+
+      // ================= INSERT ORDER =================
+      final order = await supabase.from('orders').insert({
         'customer_id': user.id,
-        'farmer_id': farmerId,
-        'address_id': widget.address['id'],
+        'farmer_id': farmerId, // ✅ NOW ALWAYS SAVED
+        'delivery_type': deliveryOption,
+        'status': deliveryOption == 'direct'
+            ? 'Placed'
+            : 'Searching Delivery Partner',
+        'pickup_otp': pickupOtp,
+        'delivery_otp': deliveryOtp,
+        'payment_method': paymentMethod,
+        'total_amount': widget.total,
         'delivery_address':
         "${widget.address['address']}, ${widget.address['city']} - ${widget.address['pincode']}",
-        'total_amount': widget.total,
-        'payment_method': paymentMethod,
-        'status': 'Placed', // MUST match farmer_orders.dart
-      })
-          .select()
-          .single();
+      }).select().single();
 
       final orderId = order['id'];
 
-      // ================= STEP 3: INSERT ORDER ITEMS =================
+      // ================= INSERT ORDER ITEMS =================
       for (final item in widget.cartItems) {
         await supabase.from('order_items').insert({
           'order_id': orderId,
@@ -80,13 +98,15 @@ class _PaymentPageState extends State<PaymentPage> {
         });
       }
 
-      // ================= STEP 4: CLEAR CART =================
+      // ================= CLEAR CART =================
       await supabase
           .from('cart')
           .delete()
           .eq('customer_id', user.id);
 
-      // ================= STEP 5: SUCCESS PAGE =================
+      if (!mounted) return;
+
+      // ================= SUCCESS =================
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -102,6 +122,7 @@ class _PaymentPageState extends State<PaymentPage> {
     }
   }
 
+  // ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,6 +143,29 @@ class _PaymentPageState extends State<PaymentPage> {
             groupValue: "COD",
             title: Text("Pay Online (Coming Soon)"),
             onChanged: null,
+          ),
+
+          const Divider(),
+
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text(
+              "How do you want to receive your order?",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+
+          RadioListTile(
+            value: "direct",
+            groupValue: deliveryOption,
+            title: const Text("Get directly from Farmer"),
+            onChanged: (v) => setState(() => deliveryOption = v!),
+          ),
+          RadioListTile(
+            value: "delivery_partner",
+            groupValue: deliveryOption,
+            title: const Text("Use Delivery Partner"),
+            onChanged: (v) => setState(() => deliveryOption = v!),
           ),
 
           const Divider(),

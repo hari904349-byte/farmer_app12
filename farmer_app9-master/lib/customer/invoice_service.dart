@@ -12,17 +12,23 @@ class InvoiceService {
   }) async {
     final pdf = pw.Document();
 
-    // ✅ LOAD UNICODE FONT (FIX ₹ SYMBOL)
+    // ✅ Unicode font (₹ support)
     final font = await PdfGoogleFonts.notoSansRegular();
     final boldFont = await PdfGoogleFonts.notoSansBold();
 
-    // ================= FETCH DATA =================
-    final farmer = await _getProfile(order['farmer_id']);
-    final deliveryPartner =
-    await _getProfile(order['delivery_partner_id']);
+    final bool isDirect = order['delivery_type'] == 'direct';
 
-    final items = (order['order_items'] ?? []) as List;
-    final date =
+    // ================= FETCH PROFILES =================
+    final String? farmerId = order['farmer_id']?.toString();
+    final String? deliveryPartnerId =
+    isDirect ? null : order['delivery_partner_id']?.toString();
+
+    final farmer = await _getProfile(order['farmer_id']?.toString());
+
+    final deliveryPartner = await _getProfile(deliveryPartnerId);
+
+    final List items = (order['order_items'] ?? []) as List;
+    final String date =
     DateFormat('dd-MM-yyyy').format(DateTime.now());
 
     pdf.addPage(
@@ -38,7 +44,16 @@ class InvoiceService {
           pw.SizedBox(height: 16),
           _shippingDetails(order),
           pw.SizedBox(height: 16),
-          _partyDetails(farmer, deliveryPartner),
+
+          // ✅ FARMER DETAILS (ALWAYS)
+          _farmerDetails(farmer),
+
+          // ✅ DELIVERY PARTNER (ONLY IF EXISTS)
+          if (!isDirect) ...[
+            pw.SizedBox(height: 10),
+            _deliveryPartnerDetails(deliveryPartner),
+          ],
+
           pw.SizedBox(height: 16),
           _itemsTable(items),
           pw.Divider(),
@@ -50,19 +65,19 @@ class InvoiceService {
     );
 
     await Printing.layoutPdf(
-      onLayout: (format) async => pdf.save(),
+      onLayout: (_) async => pdf.save(),
     );
   }
 
   // ================= FETCH PROFILE =================
   static Future<Map<String, dynamic>?> _getProfile(String? id) async {
     if (id == null) return null;
-    final data = await supabase
+
+    return await supabase
         .from('profiles')
         .select('name, mobile')
         .eq('id', id)
         .maybeSingle();
-    return data;
   }
 
   // ================= HEADER =================
@@ -73,10 +88,13 @@ class InvoiceService {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text("Farm Fresh Connect",
-                style: pw.TextStyle(
-                    fontSize: 20,
-                    fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              "Farm Fresh Connect",
+              style: pw.TextStyle(
+                fontSize: 20,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
             pw.Text("TAX INVOICE"),
           ],
         ),
@@ -101,9 +119,10 @@ class InvoiceService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text("Shipping Details",
-              style:
-              pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+          pw.Text(
+            "Shipping Details",
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
           pw.SizedBox(height: 6),
           pw.Text("Address: ${order['delivery_address']}"),
           pw.Text("Payment: ${order['payment_method'] ?? 'COD'}"),
@@ -113,56 +132,48 @@ class InvoiceService {
     );
   }
 
-  // ================= FARMER & DELIVERY =================
-  static pw.Widget _partyDetails(
-      Map<String, dynamic>? farmer,
-      Map<String, dynamic>? delivery,
-      ) {
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Expanded(
-          child: pw.Container(
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text("Farmer Details",
-                    style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 4),
-                pw.Text("Name: ${farmer?['name'] ?? '—'}"),
-                pw.Text("Mobile: ${farmer?['mobile'] ?? '—'}"),
-              ],
-            ),
+  // ================= FARMER =================
+  static pw.Widget _farmerDetails(Map<String, dynamic>? farmer) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            "Farmer Details",
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
-        ),
-        pw.SizedBox(width: 10),
-        pw.Expanded(
-          child: pw.Container(
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text("Delivery Partner",
-                    style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                    "Name: ${delivery?['name'] ?? 'Not Assigned'}"),
-                pw.Text(
-                    "Mobile: ${delivery?['mobile'] ?? '—'}"),
-              ],
-            ),
+          pw.SizedBox(height: 4),
+          pw.Text("Name: ${farmer?['name'] ?? 'Not Available'}"),
+          pw.Text("Mobile: ${farmer?['mobile'] ?? '—'}"),
+        ],
+      ),
+    );
+  }
+
+  // ================= DELIVERY PARTNER =================
+  static pw.Widget _deliveryPartnerDetails(
+      Map<String, dynamic>? delivery) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            "Delivery Partner",
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
-        ),
-      ],
+          pw.SizedBox(height: 4),
+          pw.Text("Name: ${delivery?['name'] ?? 'Not Assigned'}"),
+          pw.Text("Mobile: ${delivery?['mobile'] ?? '—'}"),
+        ],
+      ),
     );
   }
 
@@ -170,8 +181,7 @@ class InvoiceService {
   static pw.Widget _itemsTable(List items) {
     return pw.Table.fromTextArray(
       headers: ["Product", "Qty", "Price", "Total"],
-      headerStyle:
-      pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
       headerDecoration:
       const pw.BoxDecoration(color: PdfColors.grey300),
       border: pw.TableBorder.all(color: PdfColors.grey),

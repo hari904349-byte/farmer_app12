@@ -1,14 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'invoice_service.dart';
+import 'rate_farmer_page.dart';
 
-class OrderDetailsPage extends StatelessWidget {
-  final Map<String, dynamic> order;
+class OrderDetailsPage extends StatefulWidget {
+  final String orderId;
 
   const OrderDetailsPage({
     super.key,
-    required this.order,
+    required this.orderId,
   });
+
+  @override
+  State<OrderDetailsPage> createState() => _OrderDetailsPageState();
+}
+
+class _OrderDetailsPageState extends State<OrderDetailsPage> {
+  final supabase = Supabase.instance.client;
+
+  Map<String, dynamic>? order;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrder();
+  }
+
+  // ================= FETCH LATEST ORDER =================
+  Future<void> _loadOrder() async {
+    final data = await supabase
+        .from('orders')
+        .select('''
+          *,
+          order_items (
+            quantity,
+            price,
+            products ( name, image_url )
+          )
+        ''')
+        .eq('id', widget.orderId)
+        .single();
+
+    setState(() {
+      order = data;
+      loading = false;
+    });
+  }
 
   // ================= STATUS COLOR =================
   Color statusColor(String status) {
@@ -28,26 +66,36 @@ class OrderDetailsPage extends StatelessWidget {
     }
   }
 
+  // ================= FARMER =================
+  Future<Map<String, dynamic>?> _getFarmer(String? farmerId) async {
+    if (farmerId == null) return null;
+
+    return await supabase
+        .from('profiles')
+        .select('name, mobile')
+        .eq('id', farmerId)
+        .maybeSingle();
+  }
+
   // ================= DELIVERY PARTNER =================
-  Future<Map<String, dynamic>?> _getDeliveryPartner(
-      String? partnerId) async {
+  Future<Map<String, dynamic>?> _getDeliveryPartner(String? partnerId) async {
     if (partnerId == null) return null;
 
-    return await Supabase.instance.client
+    return await supabase
         .from('profiles')
         .select('name, mobile')
         .eq('id', partnerId)
         .maybeSingle();
   }
 
-  // ================= ORDER TRACKING TIMELINE =================
-  Widget orderTimeline(String status) {
-    final steps = [
-      'Placed',
-      'Accepted',
-      'Out for Delivery',
-      'Delivered',
-    ];
+  // ================= ORDER TRACKING =================
+  Widget orderTimeline({
+    required String status,
+    required bool isDirect,
+  }) {
+    final steps = isDirect
+        ? ['Placed', 'Accepted', 'Delivered']
+        : ['Placed', 'Accepted', 'Out for Delivery', 'Delivered'];
 
     int currentStep = steps.indexOf(status);
     if (currentStep < 0) currentStep = 0;
@@ -72,8 +120,7 @@ class OrderDetailsPage extends StatelessWidget {
                   Container(
                     width: 2,
                     height: 32,
-                    color:
-                    isCompleted ? Colors.green : Colors.grey,
+                    color: isCompleted ? Colors.green : Colors.grey,
                   ),
               ],
             ),
@@ -85,8 +132,6 @@ class OrderDetailsPage extends StatelessWidget {
                 style: TextStyle(
                   fontWeight:
                   isCompleted ? FontWeight.bold : FontWeight.normal,
-                  color:
-                  isCompleted ? Colors.black : Colors.grey,
                 ),
               ),
             ),
@@ -98,19 +143,30 @@ class OrderDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List items = (order['order_items'] ?? []) as List;
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
-    // ---------- FIRST PRODUCT ----------
-    final Map<String, dynamic>? product =
+    if (order == null) {
+      return const Scaffold(
+        body: Center(child: Text("Order not found")),
+      );
+    }
+
+    final items = (order!['order_items'] ?? []) as List;
+    final product =
     items.isNotEmpty ? items.first['products'] : null;
 
-    // ---------- IMAGE ----------
+    final bool isDirect = order!['delivery_type'] == 'direct';
+
     String? imageUrl;
     final imagePath = product?['image_url'];
     if (imagePath != null && imagePath.toString().isNotEmpty) {
       imageUrl = imagePath.startsWith('http')
           ? imagePath
-          : Supabase.instance.client.storage
+          : supabase.storage
           .from('product-images')
           .getPublicUrl(imagePath);
     }
@@ -125,7 +181,7 @@ class OrderDetailsPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ================= PRODUCT CARD =================
+            // ================= PRODUCT =================
             Card(
               elevation: 2,
               child: ListTile(
@@ -139,85 +195,58 @@ class OrderDetailsPage extends StatelessWidget {
                     fit: BoxFit.cover,
                   ),
                 )
-                    : const Icon(
-                  Icons.shopping_bag,
-                  size: 40,
-                  color: Colors.green,
-                ),
-                title: Text(
-                  product?['name'] ?? 'Product',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                subtitle: Text(
-                  "₹${order['total_amount']}",
-                  style: const TextStyle(fontSize: 14),
-                ),
+                    : const Icon(Icons.shopping_bag, size: 40),
+                title: Text(product?['name'] ?? 'Product'),
+                subtitle: Text("₹${order!['total_amount']}"),
                 trailing: Chip(
                   label: Text(
-                    order['status'],
+                    order!['status'],
                     style: const TextStyle(color: Colors.white),
                   ),
-                  backgroundColor:
-                  statusColor(order['status']),
+                  backgroundColor: statusColor(order!['status']),
                 ),
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // ================= ORDER TRACKING =================
-            const Text(
-              "Order Tracking",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text("Order Tracking",
+                style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            orderTimeline(order['status']),
-
-            const Divider(height: 30),
-
-            // ================= SHIPPING DETAILS =================
-            const Text(
-              "Shipping Details",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Text(order['delivery_address'] ?? '—'),
-            const SizedBox(height: 4),
-            Text(
-              "Payment Method: ${order['payment_method'] ?? 'Cash on Delivery'}",
+            orderTimeline(
+              status: order!['status'],
+              isDirect: isDirect,
             ),
 
             const Divider(height: 30),
 
-            // ================= DELIVERY PARTNER =================
-            const Text(
-              "Delivery Partner",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text("Shipping Details",
+                style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
+            Text(order!['delivery_address'] ?? '—'),
+            Text("Payment Method: ${order!['payment_method'] ?? 'COD'}"),
 
+            const Divider(height: 30),
+
+            // ================= FARMER DETAILS =================
+            const Text("Farmer Details",
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
             FutureBuilder<Map<String, dynamic>?>(
-              future:
-              _getDeliveryPartner(order['delivery_partner_id']),
+              future: _getFarmer(order!['farmer_id']),
               builder: (context, snapshot) {
-                if (snapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Text("Loading...");
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Text("Loading farmer details...");
                 }
-
                 if (!snapshot.hasData || snapshot.data == null) {
-                  return const Text("Not assigned yet");
+                  return const Text("Farmer information not available yet");
                 }
-
-                final partner = snapshot.data!;
+                final farmer = snapshot.data!;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Name: ${partner['name']}"),
-                    Text("Mobile: ${partner['mobile']}"),
+                    Text("Name: ${farmer['name']}"),
+                    Text("Mobile: ${farmer['mobile']}"),
                   ],
                 );
               },
@@ -225,18 +254,15 @@ class OrderDetailsPage extends StatelessWidget {
 
             const Divider(height: 30),
 
-            // ================= TOTAL =================
             Text(
-              "Grand Total: ₹${order['total_amount']}",
+              "Grand Total: ₹${order!['total_amount']}",
               style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+                  fontWeight: FontWeight.bold, fontSize: 16),
             ),
 
             const SizedBox(height: 30),
 
-            // ================= ACTION BUTTONS =================
+            // ================= ACTIONS =================
             ElevatedButton.icon(
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text("Download Invoice"),
@@ -245,7 +271,7 @@ class OrderDetailsPage extends StatelessWidget {
                 minimumSize: const Size.fromHeight(45),
               ),
               onPressed: () async {
-                await InvoiceService.generateInvoice(order: order);
+                await InvoiceService.generateInvoice(order: order!);
               },
             ),
 
@@ -259,21 +285,15 @@ class OrderDetailsPage extends StatelessWidget {
                 minimumSize: const Size.fromHeight(45),
               ),
               onPressed: () {
-                // Next step
-              },
-            ),
-
-            const SizedBox(height: 10),
-
-            ElevatedButton.icon(
-              icon: const Icon(Icons.delivery_dining),
-              label: const Text("Rate Delivery Partner"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                minimumSize: const Size.fromHeight(45),
-              ),
-              onPressed: () {
-                // Next step
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RateFarmerPage(
+                      farmerId: order!['farmer_id'],
+                      orderId: order!['id'],
+                    ),
+                  ),
+                );
               },
             ),
           ],

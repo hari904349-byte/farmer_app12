@@ -1,31 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class DeliveryOtpPage extends StatefulWidget {
+class FarmerPickupOtpPage extends StatefulWidget {
   final String orderId;
+  final String correctOtp;
 
-  const DeliveryOtpPage({
+  const FarmerPickupOtpPage({
     super.key,
     required this.orderId,
+    required this.correctOtp,
   });
 
   @override
-  State<DeliveryOtpPage> createState() => _DeliveryOtpPageState();
+  State<FarmerPickupOtpPage> createState() => _FarmerPickupOtpPageState();
 }
 
-class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
-  final SupabaseClient supabase = Supabase.instance.client;
+class _FarmerPickupOtpPageState extends State<FarmerPickupOtpPage> {
+  final supabase = Supabase.instance.client;
   final TextEditingController otpController = TextEditingController();
 
   bool verifying = false;
 
-  // ================= VERIFY DELIVERY OTP =================
+  // ================= VERIFY OTP & MARK DELIVERED =================
   Future<void> verifyOtp() async {
     final enteredOtp = otpController.text.trim();
 
-    if (enteredOtp.isEmpty) {
+    if (enteredOtp.length != 4) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter OTP")),
+        const SnackBar(content: Text("Enter 4-digit OTP")),
+      );
+      return;
+    }
+
+    if (enteredOtp != widget.correctOtp) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Invalid OTP")),
       );
       return;
     }
@@ -33,65 +43,28 @@ class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
     setState(() => verifying = true);
 
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) throw "Not authenticated";
-
-      // 🔹 1. FETCH ORDER DETAILS
-      final order = await supabase
-          .from('orders')
-          .select('delivery_otp, delivery_partner_id, status')
-          .eq('id', widget.orderId)
-          .single();
-
-      // 🔐 SECURITY CHECK
-      if (order['delivery_partner_id'] != user.id) {
-        throw "You are not assigned to this order";
-      }
-
-      if (order['delivery_otp'] == null) {
-        throw "Delivery OTP not generated";
-      }
-
-      // 🔹 2. VERIFY OTP
-      if (enteredOtp != order['delivery_otp']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Invalid OTP"),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() => verifying = false);
-        return;
-      }
-
-      // 🔹 3. MARK ORDER AS DELIVERED
+      // ✅ FINAL STEP: MARK ORDER AS DELIVERED
       await supabase.from('orders').update({
         'status': 'Delivered',
         'delivered_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.orderId);
 
-      // 🔹 4. SUCCESS
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Order delivered successfully ✅"),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text("Order delivered successfully ✅")),
       );
 
-      Navigator.pop(context);
+      // Go back to Farmer Orders page
+      Navigator.pop(context, true);
     } catch (e) {
-      debugPrint("❌ Delivery OTP error: $e");
-
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text("Error: $e")),
       );
     } finally {
-      setState(() => verifying = false);
+      if (mounted) {
+        setState(() => verifying = false);
+      }
     }
   }
 
@@ -106,7 +79,7 @@ class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Verify Delivery OTP"),
+        title: const Text("Verify Customer OTP"),
         backgroundColor: Colors.green,
       ),
       body: Padding(
@@ -115,8 +88,11 @@ class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "Enter OTP from Customer",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              "Enter OTP shown by Customer",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
 
             const SizedBox(height: 20),
@@ -125,6 +101,9 @@ class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
               controller: otpController,
               keyboardType: TextInputType.number,
               maxLength: 4,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+              ],
               decoration: const InputDecoration(
                 labelText: "4-digit OTP",
                 border: OutlineInputBorder(),
@@ -137,10 +116,10 @@ class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
+                onPressed: verifying ? null : verifyOtp,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                 ),
-                onPressed: verifying ? null : verifyOtp,
                 child: verifying
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text("Confirm Delivery"),

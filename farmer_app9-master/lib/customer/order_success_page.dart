@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'customer_home.dart';
+import 'product_list.dart';
+
 class OrderSuccessPage extends StatefulWidget {
   const OrderSuccessPage({super.key});
 
@@ -35,6 +38,25 @@ class _OrderSuccessPageState extends State<OrderSuccessPage> {
     }
   }
 
+  // ================= NAVIGATION =================
+
+  // 🏠 GO TO HOME → clears stack (NO back arrow)
+  void _goToHome() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const CustomerHome()),
+          (route) => false,
+    );
+  }
+
+  // 🛒 CONTINUE SHOPPING → keeps back arrow
+  void _continueShopping() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const ProductListPage()),
+    );
+  }
+
   // ================= UI =================
   @override
   Widget build(BuildContext context) {
@@ -50,6 +72,7 @@ class _OrderSuccessPageState extends State<OrderSuccessPage> {
               size: 100,
               color: Colors.green,
             ),
+
             const SizedBox(height: 20),
 
             const Text(
@@ -67,23 +90,37 @@ class _OrderSuccessPageState extends State<OrderSuccessPage> {
               style: TextStyle(color: Colors.grey),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 40),
 
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 12,
+            // 🛒 CONTINUE SHOPPING
+            SizedBox(
+              width: 220,
+              child: OutlinedButton(
+                onPressed: _continueShopping,
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.green),
+                ),
+                child: const Text(
+                  "Continue Shopping",
+                  style: TextStyle(color: Colors.green),
                 ),
               ),
-              onPressed: () {
-                Navigator.popUntil(
-                  context,
-                      (route) => route.isFirst,
-                );
-              },
-              child: const Text("Go to Home"),
+            ),
+
+            const SizedBox(height: 15),
+
+            // 🏠 GO TO HOME
+            SizedBox(
+              width: 220,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: _goToHome,
+                child: const Text("Go to Home"),
+              ),
             ),
           ],
         ),

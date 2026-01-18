@@ -1,7 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
-
+import 'package:flutter_localizations/flutter_localizations.dart'; // ✅ ADD THIS
 
 import 'core/theme/app_theme.dart';
 import 'core/language_provider.dart';
@@ -11,6 +12,12 @@ import 'onboarding/onboarding_screen.dart';
 import 'farmer/farmer_dashboard.dart';
 import 'customer/customer_home.dart';
 import 'delivery/delivery_home.dart';
+
+// RESET PASSWORD
+import 'auth/reset_password_page.dart';
+
+final GlobalKey<NavigatorState> navigatorKey =
+GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +34,19 @@ Future<void> main() async {
       child: const FarmFreshConnectApp(),
     ),
   );
+
+  // ✅ LISTEN AFTER APP STARTS
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.passwordRecovery) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => const ResetPasswordPage(),
+          ),
+        );
+      }
+    });
+  });
 }
 
 class FarmFreshConnectApp extends StatelessWidget {
@@ -34,18 +54,34 @@ class FarmFreshConnectApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Farm Fresh Connect',
-      theme: AppTheme.lightTheme,
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          debugShowCheckedModeBanner: false,
+          title: 'Farm Fresh Connect',
+          theme: AppTheme.lightTheme,
 
-      // Entry point
-      home: const OnboardingScreen(),
+          // ✅ CORRECT LOCALIZATION SETUP
+          locale: Locale(languageProvider.language),
+          supportedLocales: const [
+            Locale('en'),
+            Locale('ta'),
+            Locale('hi'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
 
-      routes: {
-        '/farmer_dashboard': (context) => const FarmerDashboard(),
-        '/customer_dashboard': (context) => const CustomerHome(),
-        '/delivery_dashboard': (context) => const DeliveryHome(),
+          home: const OnboardingScreen(),
+          routes: {
+            '/farmer_dashboard': (_) => const FarmerDashboard(),
+            '/customer_dashboard': (_) => const CustomerHome(),
+            '/delivery_dashboard': (_) => const DeliveryHome(),
+          },
+        );
       },
     );
   }

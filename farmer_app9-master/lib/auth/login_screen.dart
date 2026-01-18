@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 
-// REGISTER SCREENS
+import '../core/language_provider.dart';
+import '../core/utils/app_strings.dart';
+
 import 'register_customer.dart';
 import 'register_farmer.dart';
 import 'register_delivery.dart';
+import 'forgot_password_page.dart';
 
 class LoginScreen extends StatefulWidget {
-  final String role; // customer / farmer / delivery
+  final String role;
 
   const LoginScreen({super.key, required this.role});
 
@@ -16,19 +20,25 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final emailController = TextEditingController();
+  final supabase = Supabase.instance.client;
+
+  final loginController = TextEditingController();
   final passwordController = TextEditingController();
 
   bool loading = false;
-  bool hidePassword = true; // 👁️ NEW
+  bool hidePassword = true;
 
   @override
   Widget build(BuildContext context) {
+    final langProvider = Provider.of<LanguageProvider>(context);
+
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // 🔽 dismiss keyboard
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         appBar: AppBar(
-          title: Text("Login - ${widget.role.toUpperCase()}"),
+          title: Text(
+            '${AppStrings.text('login', langProvider.language)} - ${widget.role.toUpperCase()}',
+          ),
           backgroundColor: Colors.green,
         ),
         body: Padding(
@@ -36,13 +46,20 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.account_circle, size: 90, color: Colors.green),
-              const SizedBox(height: 20),
+              const Icon(Icons.account_circle,
+                  size: 90, color: Colors.green),
+
+              const SizedBox(height: 10),
 
               Text(
-                "Welcome ${widget.role}",
+                AppStrings.text(
+                  widget.role == 'customer'
+                      ? 'welcome_customer'
+                      : 'welcome_farmer',
+                  langProvider.language,
+                ),
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -51,11 +68,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // EMAIL
               TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
+                controller: loginController,
                 decoration: InputDecoration(
-                  labelText: "Email",
-                  prefixIcon: const Icon(Icons.email),
+                  labelText:
+                  AppStrings.text('email', langProvider.language),
+                  prefixIcon: const Icon(Icons.person),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -69,7 +86,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: passwordController,
                 obscureText: hidePassword,
                 decoration: InputDecoration(
-                  labelText: "Password",
+                  labelText:
+                  AppStrings.text('password', langProvider.language),
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
                     icon: Icon(
@@ -77,9 +95,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? Icons.visibility_off
                           : Icons.visibility,
                     ),
-                    onPressed: () {
-                      setState(() => hidePassword = !hidePassword);
-                    },
+                    onPressed: () =>
+                        setState(() => hidePassword = !hidePassword),
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -87,7 +104,26 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 25),
+              // ✅ FORGOT PASSWORD (FIXED)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ForgotPasswordPage(),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    AppStrings.text(
+                        'forgot_password', langProvider.language),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
 
               // LOGIN BUTTON
               SizedBox(
@@ -100,17 +136,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: loading ? null : _login,
                   child: loading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Login",
-                      style: TextStyle(fontSize: 18)),
+                      : Text(
+                    AppStrings.text('login', langProvider.language),
+                    style: const TextStyle(fontSize: 18),
+                  ),
                 ),
               ),
 
               const SizedBox(height: 15),
 
-              // REGISTER
+              // ✅ NEW USER REGISTER (FIXED)
               TextButton(
                 onPressed: _goToRegister,
-                child: const Text("New user? Register here"),
+                child: Text(
+                  AppStrings.text(
+                      'register', langProvider.language),
+                ),
               ),
             ],
           ),
@@ -119,71 +160,71 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ================= LOGIN FUNCTION =================
-
+  // ================= LOGIN LOGIC =================
   Future<void> _login() async {
-    final email = emailController.text.trim();
+    final input = loginController.text.trim().replaceAll(' ', '');
     final password = passwordController.text.trim();
 
-    // 🔐 BASIC VALIDATION (NEW)
-    if (email.isEmpty || password.isEmpty) {
-      _showError("Email and password are required");
-      return;
-    }
-
-    if (!email.contains('@')) {
-      _showError("Enter a valid email");
-      return;
-    }
-
-    if (password.length < 6) {
-      _showError("Password must be at least 6 characters");
+    if (input.isEmpty || password.isEmpty) {
+      _show("All fields are required");
       return;
     }
 
     setState(() => loading = true);
 
     try {
-      // SUPABASE LOGIN (UNCHANGED)
-      final response =
-      await Supabase.instance.client.auth.signInWithPassword(
+      String email;
+
+      if (input.contains('@')) {
+        email = input;
+      } else {
+        String mobile = input.startsWith('+91')
+            ? input.substring(3)
+            : input;
+
+        final profile = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('mobile', mobile)
+            .maybeSingle();
+
+        if (profile == null) {
+          _show("Mobile number not registered");
+          return;
+        }
+
+        email = profile['email'];
+      }
+
+      await supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
 
-      final user = response.user;
-      if (user == null) {
-        _showError("Invalid login credentials");
-        return;
-      }
-
-      // FETCH ROLE
-      final profile = await Supabase.instance.client
+      final user = supabase.auth.currentUser!;
+      final roleData = await supabase
           .from('profiles')
           .select('role')
           .eq('id', user.id)
           .single();
 
-      if (profile['role'] != widget.role) {
-        _showError("You are not registered as ${widget.role}");
+      if (roleData['role'] != widget.role) {
+        _show("You are not registered as ${widget.role}");
         return;
       }
 
-      // DASHBOARD NAVIGATION (UNCHANGED)
       Navigator.pushReplacementNamed(
         context,
         '/${widget.role}_dashboard',
       );
     } on AuthException catch (e) {
-      _showError(e.message);
+      _show(e.message);
     } catch (e) {
-      _showError("Login failed");
+      _show("Login failed");
     } finally {
       setState(() => loading = false);
     }
   }
-
-  // ================= REGISTER NAVIGATION =================
 
   void _goToRegister() {
     if (widget.role == 'customer') {
@@ -196,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
         MaterialPageRoute(builder: (_) => const RegisterFarmer()),
       );
-    } else if (widget.role == 'delivery') {
+    } else {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const RegisterDelivery()),
@@ -204,8 +245,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showError(String message) {
+  void _show(String msg) {
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 }
