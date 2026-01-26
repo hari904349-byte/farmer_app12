@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../core/supabase_helper.dart';
 
 class RegisterFarmer extends StatefulWidget {
@@ -10,8 +15,6 @@ class RegisterFarmer extends StatefulWidget {
 }
 
 class _RegisterFarmerState extends State<RegisterFarmer> {
-
-  // 🔹 CONTROLLERS
   final nameController = TextEditingController();
   final mobileController = TextEditingController();
   final emailController = TextEditingController();
@@ -19,6 +22,13 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
   final aadhaarController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
+
+  bool loadingLocation = false;
+  bool loadingRegister = false;
+
+  // ✅ FIX: ADD LAT & LNG VARIABLES
+  double? _currentLat;
+  double? _currentLng;
 
   @override
   Widget build(BuildContext context) {
@@ -31,15 +41,14 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-
             _input("Username", nameController),
-            _input("Mobile Number", mobileController, keyboard: TextInputType.phone),
+            _input("Mobile Number", mobileController,
+                keyboard: TextInputType.phone),
             _input("Email", emailController),
-            _inputWithIcon("Location", locationController, Icons.location_on),
 
-            // 🆔 AADHAAR
+            _locationInput(),
+
             _aadhaarInput(),
-
             _password("Password", passwordController),
             _password("Confirm Password", confirmPasswordController),
 
@@ -49,9 +58,14 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: _registerFarmer,
-                child: const Text("Register", style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                ),
+                onPressed: loadingRegister ? null : _registerFarmer,
+                child: loadingRegister
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("Register",
+                    style: TextStyle(fontSize: 18)),
               ),
             ),
           ],
@@ -60,7 +74,84 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
     );
   }
 
-  // ================= REGISTER LOGIC =================
+  // ================= LOCATION =================
+
+  Widget _locationInput() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: TextField(
+        controller: locationController,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: "Location",
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          prefixIcon: const Icon(Icons.location_on),
+          suffixIcon: loadingLocation
+              ? const Padding(
+            padding: EdgeInsets.all(12),
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+              : IconButton(
+            icon: const Icon(Icons.my_location),
+            onPressed: _getCurrentLocation,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => loadingLocation = true);
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showMsg("Location permission permanently denied");
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // ✅ SAVE LAT & LNG
+      _currentLat = position.latitude;
+      _currentLng = position.longitude;
+
+      // 🌐 WEB FALLBACK (no reverse geocoding support)
+      if (kIsWeb) {
+        locationController.text = "Coimbatore, Tamil Nadu";
+        return;
+      }
+
+      // 📱 MOBILE REVERSE GEOCODING
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      final place = placemarks.first;
+
+      locationController.text =
+      "${place.locality}, ${place.administrativeArea}";
+    } catch (e) {
+      _showMsg("Unable to fetch location");
+    } finally {
+      setState(() => loadingLocation = false);
+    }
+  }
+
+  // ================= REGISTER =================
 
   Future<void> _registerFarmer() async {
     if (passwordController.text != confirmPasswordController.text) {
@@ -73,8 +164,14 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
       return;
     }
 
+    if (locationController.text.isEmpty) {
+      _showMsg("Please select location");
+      return;
+    }
+
+    setState(() => loadingRegister = true);
+
     try {
-      // 1️⃣ AUTH SIGNUP
       final auth = await SupabaseHelper.signUp(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
@@ -82,7 +179,6 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
 
       final userId = auth.user!.id;
 
-      // 2️⃣ INSERT INTO PROFILES
       await SupabaseHelper.insertProfile({
         'id': userId,
         'role': 'farmer',
@@ -90,14 +186,23 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
         'mobile': mobileController.text.trim(),
         'email': emailController.text.trim(),
         'location': locationController.text.trim(),
+        'latitude': _currentLat,
+        'longitude': _currentLng,
         'aadhaar': aadhaarController.text.trim(),
       });
 
-      _showMsg("Farmer Registered Successfully");
+      _showMsg("Farmer registered successfully");
       Navigator.pop(context);
-
-    } catch (e) {
-      _showMsg(e.toString());
+    } on AuthException catch (e) {
+      if (e.code == 'user_already_exists') {
+        _showMsg("Email already registered. Please login.");
+      } else {
+        _showMsg(e.message);
+      }
+    } catch (_) {
+      _showMsg("Registration failed");
+    } finally {
+      setState(() => loadingRegister = false);
     }
   }
 
@@ -115,19 +220,6 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
     );
   }
 
-  Widget _inputWithIcon(
-      String label, TextEditingController controller, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: TextField(
-        controller: controller,
-        decoration: _inputStyle(label).copyWith(
-          prefixIcon: Icon(icon),
-        ),
-      ),
-    );
-  }
-
   Widget _aadhaarInput() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
@@ -138,9 +230,8 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(12),
         ],
-        decoration: _inputStyle("Aadhaar Number").copyWith(
-          prefixIcon: const Icon(Icons.badge),
-        ),
+        decoration: _inputStyle("Aadhaar Number")
+            .copyWith(prefixIcon: const Icon(Icons.badge)),
       ),
     );
   }

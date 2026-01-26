@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter/foundation.dart';
 
 class AddProduct extends StatefulWidget {
   const AddProduct({super.key});
@@ -31,6 +33,61 @@ class _AddProductState extends State<AddProduct> {
   // Image
   Uint8List? imageBytes;
   bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFarmerLocation();
+  }
+
+  // ================= LOAD FARMER LOCATION =================
+
+  Future<void> _loadFarmerLocation() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final data = await supabase
+          .from('profiles')
+          .select('location')
+          .eq('id', user.id)
+          .single();
+
+      final rawLocation = data['location'] ?? '';
+
+      // 🔁 Convert Lat/Lng → Place name if needed
+      if (rawLocation.contains('Lat') && !kIsWeb) {
+        final address = await _convertLatLngToAddress(rawLocation);
+        _locationCtrl.text = address;
+      } else {
+        _locationCtrl.text = rawLocation;
+      }
+    } catch (e) {
+      debugPrint('Failed to load farmer location: $e');
+    }
+  }
+
+  // ================= LAT LNG → ADDRESS =================
+
+  Future<String> _convertLatLngToAddress(String location) async {
+    try {
+      final cleaned = location
+          .replaceAll('Lat:', '')
+          .replaceAll('Lng:', '')
+          .split(',');
+
+      final lat = double.parse(cleaned[0].trim());
+      final lng = double.parse(cleaned[1].trim());
+
+      final placemarks = await placemarkFromCoordinates(lat, lng);
+      final place = placemarks.first;
+
+      return "${place.locality ?? place.subAdministrativeArea}, "
+          "${place.administrativeArea}";
+    } catch (_) {
+      return location; // fallback
+    }
+  }
 
   // ================= PICK IMAGE =================
 
@@ -65,37 +122,33 @@ class _AddProductState extends State<AddProduct> {
 
       final userId = supabase.auth.currentUser!.id;
 
-      // ✅ IMAGE PATH (ONLY PATH, NOT URL)
       final imagePath =
           'products/$userId-${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      // Upload image
       await supabase.storage.from('product-images').uploadBinary(
         imagePath,
         imageBytes!,
         fileOptions: const FileOptions(contentType: 'image/jpeg'),
       );
 
-      // Insert product (STORE ONLY PATH)
       await supabase.from('products').insert({
         'farmer_id': userId,
-        'name': _nameCtrl.text,
+        'name': _nameCtrl.text.trim(),
         'price': int.parse(_priceCtrl.text),
         'price_unit': priceUnit,
         'stock': int.parse(_stockCtrl.text),
         'stock_unit': stockUnit,
-        'location': _locationCtrl.text,
+        'location': _locationCtrl.text.trim(), // ✅ HUMAN READABLE
         'cultivated_date': cultivatedDate!.toIso8601String(),
         'expiry_date': expiryDate!.toIso8601String(),
-        'image_url': imagePath, // ✅ CORRECT
+        'image_url': imagePath,
       });
 
       if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
       setState(() => loading = false);
     }
@@ -114,7 +167,7 @@ class _AddProductState extends State<AddProduct> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // IMAGE PICKER
+            // IMAGE
             GestureDetector(
               onTap: pickImage,
               child: Container(
@@ -132,11 +185,8 @@ class _AddProductState extends State<AddProduct> {
                 ),
                 child: imageBytes == null
                     ? const Center(
-                  child: Icon(
-                    Icons.add_a_photo,
-                    size: 40,
-                    color: Colors.green,
-                  ),
+                  child: Icon(Icons.add_a_photo,
+                      size: 40, color: Colors.green),
                 )
                     : null,
               ),
@@ -145,7 +195,20 @@ class _AddProductState extends State<AddProduct> {
             const SizedBox(height: 20),
 
             _input("Product Name", _nameCtrl),
-            _input("Location", _locationCtrl),
+
+            // ✅ AUTO LOCATION (READ ONLY)
+            TextField(
+              controller: _locationCtrl,
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: "Location",
+                prefixIcon: const Icon(Icons.location_on),
+                border:
+                OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+
+            const SizedBox(height: 15),
 
             _priceStockInput(
               label: "Price",
@@ -179,9 +242,8 @@ class _AddProductState extends State<AddProduct> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                ),
+                style:
+                ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 onPressed: loading ? null : saveProduct,
                 child: loading
                     ? const CircularProgressIndicator(color: Colors.white)

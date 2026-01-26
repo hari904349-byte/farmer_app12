@@ -1,4 +1,6 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProductListPage extends StatefulWidget {
@@ -20,13 +22,118 @@ class _ProductListPageState extends State<ProductListPage> {
 
   // ================= FILTER STATE =================
   String searchQuery = '';
-  String sortBy = 'newest'; // newest | oldest | price_low | price_high
+  String sortBy = 'nearest'; // nearest | newest | oldest | price_low | price_high
+
+  double? userLat;
+  double? userLng;
 
   @override
   void initState() {
     super.initState();
-    fetchProducts();
+    _init();
   }
+  Future<void> _init() async {
+    final hasSavedLocation = await _loadLocationFromProfile();
+
+    if (!hasSavedLocation) {
+      await _getUserLocation();
+      await _saveLocationToProfile();
+    }
+
+    await fetchProducts();
+  }
+
+  Future<bool> _loadLocationFromProfile() async {
+    try {
+      final userId = supabase.auth.currentUser!.id;
+
+      final data = await supabase
+          .from('profiles')
+          .select('latitude, longitude')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (data != null &&
+          data['latitude'] != null &&
+          data['longitude'] != null) {
+        userLat = (data['latitude'] as num).toDouble();
+        userLng = (data['longitude'] as num).toDouble();
+        debugPrint("Location loaded from DB");
+        return true;
+      }
+    } catch (e) {
+      debugPrint("DB location error: $e");
+    }
+    return false;
+  }
+
+  // ================= USER LOCATION =================
+  // ================= USER LOCATION =================
+  Future<void> _getUserLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        debugPrint("Location permission denied");
+        userLat = null;
+        userLng = null;
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        userLat = pos.latitude;
+        userLng = pos.longitude;
+      });
+    } catch (e) {
+      debugPrint("Location error: $e");
+      userLat = null;
+      userLng = null;
+    }
+  }
+  Future<void> _saveLocationToProfile() async {
+    if (userLat == null || userLng == null) return;
+
+    try {
+      final userId = supabase.auth.currentUser!.id;
+
+      await supabase.from('profiles').update({
+        'latitude': userLat,
+        'longitude': userLng,
+      }).eq('id', userId);
+
+      debugPrint("Location saved to DB");
+    } catch (e) {
+      debugPrint("Save location failed: $e");
+    }
+  }
+
+
+
+  // ================= DISTANCE CALC =================
+  double _distanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371;
+    final dLat = _deg(lat2 - lat1);
+    final dLon = _deg(lon2 - lon1);
+
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_deg(lat1)) *
+            cos(_deg(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
+  double _deg(double d) => d * pi / 180;
 
   // ================= FETCH PRODUCTS =================
   Future<void> fetchProducts() async {
@@ -41,7 +148,11 @@ class _ProductListPageState extends State<ProductListPage> {
             image_url,
             farmer_id,
             created_at,
-            profiles(name),
+            profiles(
+              name,
+              latitude,
+              longitude
+            ),
             offers!left (
               id,
               discount_type,
@@ -49,15 +160,28 @@ class _ProductListPageState extends State<ProductListPage> {
               start_date,
               end_date
             )
-          ''')
-          .order('created_at', ascending: false);
+          ''');
+
+      for (var p in data) {
+        quantities[p['id']] = quantities[p['id']] ?? 1;
+
+        if (userLat != null &&
+            p['profiles']?['latitude'] != null &&
+            p['profiles']?['longitude'] != null) {
+          p['distance'] = _distanceKm(
+            userLat!,
+            userLng!,
+            p['profiles']['latitude'],
+            p['profiles']['longitude'],
+          );
+        } else {
+          p['distance'] = 9999.0;
+        }
+      }
 
       setState(() {
         allProducts = data;
-        products = data;
-        for (var p in products) {
-          quantities[p['id']] = quantities[p['id']] ?? 1;
-        }
+        applyFilters();
         isLoading = false;
       });
     } catch (e) {
@@ -81,7 +205,10 @@ class _ProductListPageState extends State<ProductListPage> {
     }
 
     // ↕ Sort
-    if (sortBy == 'price_low') {
+    if (sortBy == 'nearest') {
+      filtered.sort((a, b) =>
+          (a['distance'] as double).compareTo(b['distance']));
+    } else if (sortBy == 'price_low') {
       filtered.sort((a, b) => a['price'].compareTo(b['price']));
     } else if (sortBy == 'price_high') {
       filtered.sort((a, b) => b['price'].compareTo(a['price']));
@@ -180,7 +307,6 @@ class _ProductListPageState extends State<ProductListPage> {
             padding: const EdgeInsets.all(10),
             child: Column(
               children: [
-                // 🔍 SEARCH
                 TextField(
                   decoration: InputDecoration(
                     hintText: 'Search products...',
@@ -198,8 +324,6 @@ class _ProductListPageState extends State<ProductListPage> {
                   },
                 ),
                 const SizedBox(height: 8),
-
-                // FILTER DROPDOWN
                 Row(
                   children: [
                     const Text("Sort by: "),
@@ -208,13 +332,17 @@ class _ProductListPageState extends State<ProductListPage> {
                       value: sortBy,
                       items: const [
                         DropdownMenuItem(
+                            value: 'nearest', child: Text('Nearest')),
+                        DropdownMenuItem(
                             value: 'newest', child: Text('Newest')),
                         DropdownMenuItem(
                             value: 'oldest', child: Text('Oldest')),
                         DropdownMenuItem(
-                            value: 'price_low', child: Text('Price: Low → High')),
+                            value: 'price_low',
+                            child: Text('Price: Low → High')),
                         DropdownMenuItem(
-                            value: 'price_high', child: Text('Price: High → Low')),
+                            value: 'price_high',
+                            child: Text('Price: High → Low')),
                       ],
                       onChanged: (value) {
                         sortBy = value!;
@@ -228,7 +356,6 @@ class _ProductListPageState extends State<ProductListPage> {
           ),
         ),
       ),
-
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : products.isEmpty
@@ -242,6 +369,8 @@ class _ProductListPageState extends State<ProductListPage> {
           final finalPrice = calculateFinalPrice(product);
           final farmerName =
               product['profiles']?['name'] ?? 'Farmer';
+          final distance =
+          (product['distance'] as double).toStringAsFixed(1);
 
           String? imageUrl;
           if (product['image_url'] != null &&
@@ -297,7 +426,7 @@ class _ProductListPageState extends State<ProductListPage> {
                               fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          "Farmer: $farmerName",
+                          "Farmer: $farmerName • $distance km",
                           style: const TextStyle(
                               fontSize: 13, color: Colors.grey),
                         ),

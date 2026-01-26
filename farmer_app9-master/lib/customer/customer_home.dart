@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'product_list.dart';
 import 'order_status.dart';
@@ -17,6 +18,43 @@ class CustomerHome extends StatefulWidget {
 }
 
 class _CustomerHomeState extends State<CustomerHome> {
+
+  // ================= INIT =================
+  @override
+  void initState() {
+    super.initState();
+    _saveCustomerLocation();
+  }
+
+  // ================= SAVE CUSTOMER LOCATION =================
+  Future<void> _saveCustomerLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      await Supabase.instance.client.from('profiles').update({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+      }).eq('id', user.id);
+
+    } catch (e) {
+      debugPrint('Location error: $e');
+    }
+  }
 
   // ================= FETCH CUSTOMER PROFILE =================
   Future<Map<String, dynamic>> _getCustomerProfile() async {
@@ -83,15 +121,15 @@ class _CustomerHomeState extends State<CustomerHome> {
           drawer: Drawer(
             child: Column(
               children: [
-                // ===== PROFILE HEADER =====
                 GestureDetector(
                   onTap: () async {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const ProfileEditPage()),
+                        builder: (_) => const ProfileEditPage(),
+                      ),
                     );
-                    setState(() {}); // refresh after edit
+                    setState(() {});
                   },
                   child: DrawerHeader(
                     decoration: const BoxDecoration(color: Colors.green),
@@ -100,9 +138,8 @@ class _CustomerHomeState extends State<CustomerHome> {
                         CircleAvatar(
                           radius: 28,
                           backgroundColor: Colors.white,
-                          backgroundImage: avatarUrl != null
-                              ? NetworkImage(avatarUrl)
-                              : null,
+                          backgroundImage:
+                          avatarUrl != null ? NetworkImage(avatarUrl) : null,
                           child: avatarUrl == null
                               ? const Icon(Icons.person,
                               size: 32, color: Colors.green)
@@ -138,63 +175,37 @@ class _CustomerHomeState extends State<CustomerHome> {
                   title: "Home",
                   onTap: () => Navigator.pop(context),
                 ),
-
-                _drawerItem(
-                  icon: Icons.person,
-                  title: "Edit Profile",
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ProfileEditPage()),
-                    );
-                    setState(() {});
-                  },
-                ),
-
                 _drawerItem(
                   icon: Icons.shopping_bag,
                   title: "Browse Products",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ProductListPage()),
-                    );
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProductListPage()),
+                  ),
                 ),
                 _drawerItem(
                   icon: Icons.shopping_cart,
                   title: "My Cart",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const CartPage()),
-                    );
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CartPage()),
+                  ),
                 ),
                 _drawerItem(
                   icon: Icons.receipt_long,
                   title: "My Orders",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const OrderStatusPage()),
-                    );
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OrderStatusPage()),
+                  ),
                 ),
                 _drawerItem(
                   icon: Icons.local_offer,
                   title: "Offers & Discounts",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const CustomerOffers()),
-                    );
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CustomerOffers()),
+                  ),
                 ),
 
                 const Spacer(),
@@ -210,7 +221,8 @@ class _CustomerHomeState extends State<CustomerHome> {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const OnboardingScreen()),
+                        builder: (_) => const OnboardingScreen(),
+                      ),
                           (route) => false,
                     );
                   },
@@ -249,7 +261,6 @@ class _CustomerHomeState extends State<CustomerHome> {
                   page: const CartPage(),
                 ),
 
-                // ===== MY ORDERS WITH BADGE =====
                 FutureBuilder<int>(
                   future: _getOrderCount(),
                   builder: (context, snapshot) {
@@ -306,10 +317,7 @@ class _CustomerHomeState extends State<CustomerHome> {
         ),
         title: Row(
           children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 8),
             if (badgeCount > 0)
               CircleAvatar(
@@ -317,15 +325,13 @@ class _CustomerHomeState extends State<CustomerHome> {
                 backgroundColor: Colors.red,
                 child: Text(
                   badgeCount.toString(),
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 12),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
           ],
         ),
         subtitle: Text(subtitle),
-        trailing:
-        const Icon(Icons.arrow_forward_ios, size: 16),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: () {
           Navigator.push(
             context,
