@@ -1,8 +1,11 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase_helper.dart';
@@ -15,7 +18,8 @@ class RegisterCustomer extends StatefulWidget {
 }
 
 class _RegisterCustomerState extends State<RegisterCustomer> {
-  // 🔹 Controllers
+  final supabase = Supabase.instance.client;
+
   final usernameCtrl = TextEditingController();
   final mobileCtrl = TextEditingController();
   final emailCtrl = TextEditingController();
@@ -26,9 +30,13 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
   bool loadingLocation = false;
   bool loadingRegister = false;
 
-  // ✅ LOCATION COORDINATES
   double? _currentLat;
   double? _currentLng;
+
+  File? selectedImage;
+  Uint8List? webImage;
+
+  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +49,26 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+
+            // 🔥 PROFILE IMAGE
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 55,
+                backgroundColor: Colors.grey[300],
+                backgroundImage: kIsWeb
+                    ? (webImage != null ? MemoryImage(webImage!) : null)
+                    : (selectedImage != null
+                    ? FileImage(selectedImage!)
+                    : null) as ImageProvider?,
+                child: (selectedImage == null && webImage == null)
+                    ? const Icon(Icons.camera_alt, size: 35)
+                    : null,
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
             _input("Username", usernameCtrl),
             _input("Mobile Number", mobileCtrl,
                 keyboard: TextInputType.phone),
@@ -71,6 +99,27 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
         ),
       ),
     );
+  }
+
+  // ================= IMAGE PICKER =================
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked =
+    await picker.pickImage(source: ImageSource.gallery);
+
+    if (picked != null) {
+      if (kIsWeb) {
+        final bytes = await picked.readAsBytes();
+        setState(() {
+          webImage = bytes;
+        });
+      } else {
+        setState(() {
+          selectedImage = File(picked.path);
+        });
+      }
+    }
   }
 
   // ================= LOCATION =================
@@ -109,31 +158,24 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
     setState(() => loadingLocation = true);
 
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
+      LocationPermission permission =
+      await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        _show("Location permission permanently denied");
-        return;
       }
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // ✅ SAVE LAT/LNG
       _currentLat = position.latitude;
       _currentLng = position.longitude;
 
-      // 🌐 WEB FALLBACK
       if (kIsWeb) {
-        locationCtrl.text = "Coimbatore, Tamil Nadu";
+        locationCtrl.text = "Location selected";
         return;
       }
 
-      // 📱 MOBILE REVERSE GEOCODING
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
@@ -143,7 +185,7 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
 
       locationCtrl.text =
       "${place.locality}, ${place.administrativeArea}";
-    } catch (e) {
+    } catch (_) {
       _show("Unable to fetch location");
     } finally {
       setState(() => loadingLocation = false);
@@ -170,16 +212,6 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
       return;
     }
 
-    if (!email.contains('@')) {
-      _show("Enter a valid email");
-      return;
-    }
-
-    if (password.length < 6) {
-      _show("Password must be at least 6 characters");
-      return;
-    }
-
     if (password != confirmPassword) {
       _show("Passwords do not match");
       return;
@@ -194,6 +226,28 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
       );
 
       final user = auth.user!;
+      String? imageUrl;
+
+      // 🔥 Upload image if selected
+      if (selectedImage != null || webImage != null) {
+        final fileName =
+            "${user.id}-${DateTime.now().millisecondsSinceEpoch}.jpg";
+
+        if (kIsWeb) {
+          await supabase.storage
+              .from('profile_photos')
+              .uploadBinary(fileName, webImage!);
+        } else {
+          await supabase.storage
+              .from('profile_photos')
+              .upload(fileName, selectedImage!);
+        }
+
+        imageUrl = supabase.storage
+            .from('profile_photos')
+            .getPublicUrl(fileName);
+      }
+
       await SupabaseHelper.insertProfile({
         'id': user.id,
         'role': 'customer',
@@ -203,10 +257,12 @@ class _RegisterCustomerState extends State<RegisterCustomer> {
         'location': location,
         'latitude': _currentLat,
         'longitude': _currentLng,
+        'profile_image': imageUrl,
       });
 
       _show("Customer registered successfully");
       Navigator.pop(context);
+
     } on AuthException catch (e) {
       _show(e.message);
     } catch (_) {

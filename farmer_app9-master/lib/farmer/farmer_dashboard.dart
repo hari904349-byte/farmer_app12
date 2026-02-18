@@ -11,19 +11,21 @@ import 'farmer_products.dart';
 import 'sales_revenue.dart';
 import 'show_rating.dart';
 import 'offers_list.dart';
-import 'assign_delivery_page.dart'; // ✅ NEW
+import 'assign_delivery_page.dart';
+import 'farmer_edit_profile.dart';
+
 
 class FarmerDashboard extends StatelessWidget {
   const FarmerDashboard({super.key});
 
-  // 🔹 Fetch farmer profile from profiles table
+  // 🔹 Fetch farmer profile (INCLUDING IMAGE)
   Future<Map<String, dynamic>?> _getFarmerProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return null;
 
     final data = await Supabase.instance.client
         .from('profiles')
-        .select('name, mobile')
+        .select('name, mobile, profile_image')
         .eq('id', user.id)
         .single();
 
@@ -37,10 +39,7 @@ class FarmerDashboard extends StatelessWidget {
         title: const Text("Farmer Dashboard"),
         backgroundColor: Colors.green,
       ),
-
-      // ✅ DRAWER
       drawer: _drawer(context),
-
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -66,7 +65,6 @@ class FarmerDashboard extends StatelessWidget {
               const FarmerOrders(),
             ),
 
-            // ✅ NEW: ASSIGN DELIVERY PARTNER
             _homeButton(
               context,
               "Assign Delivery Partner",
@@ -92,27 +90,51 @@ class FarmerDashboard extends StatelessWidget {
     return Drawer(
       child: Column(
         children: [
-          // ✅ FARMER NAME + MOBILE
           FutureBuilder<Map<String, dynamic>?>(
             future: _getFarmerProfile(),
             builder: (context, snapshot) {
               final name = snapshot.data?['name'] ?? 'Farmer';
               final mobile = snapshot.data?['mobile'] ?? '';
+              final imageUrl = snapshot.data?['profile_image'];
 
               return DrawerHeader(
                 decoration: const BoxDecoration(color: Colors.green),
                 child: Row(
                   children: [
-                    const CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.white,
-                      child: Icon(
-                        Icons.person,
-                        color: Colors.green,
-                        size: 35,
+                    // ✅ PROFILE IMAGE LOGIC
+                    GestureDetector(
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const FarmerEditProfile(),
+                          ),
+                        );
+
+                        if (result == true) {
+                          (context as Element).reassemble(); // refresh drawer
+                        }
+                      },
+                      child: CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.white,
+                        backgroundImage: imageUrl != null && imageUrl.isNotEmpty
+                            ? NetworkImage(imageUrl)
+                            : null,
+                        child: imageUrl == null || imageUrl.isEmpty
+                            ? const Icon(
+                          Icons.person,
+                          color: Colors.green,
+                          size: 35,
+                        )
+                            : null,
                       ),
+
                     ),
+
+
                     const SizedBox(width: 15),
+
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,7 +184,6 @@ class FarmerDashboard extends StatelessWidget {
             onTap: () => _navigate(context, const FarmerOrders()),
           ),
 
-          // ✅ NEW: ASSIGN DELIVERY
           _drawerItem(
             context: context,
             title: "Assign Delivery Partner",
@@ -194,7 +215,6 @@ class FarmerDashboard extends StatelessWidget {
           const Spacer(),
           const Divider(),
 
-          // 🔴 LOGOUT
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text("Logout"),

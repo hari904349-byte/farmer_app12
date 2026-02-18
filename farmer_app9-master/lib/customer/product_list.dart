@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -31,6 +32,11 @@ class _ProductListPageState extends State<ProductListPage> {
   void initState() {
     super.initState();
     _init();
+
+    // 🔥 Auto refresh every 1 minute
+    Timer.periodic(const Duration(minutes: 1), (timer) {
+      fetchProducts();
+    });
   }
   Future<void> _init() async {
     final hasSavedLocation = await _loadLocationFromProfile();
@@ -144,6 +150,7 @@ class _ProductListPageState extends State<ProductListPage> {
             id,
             name,
             price,
+            stock,
             price_unit,
             image_url,
             farmer_id,
@@ -225,34 +232,63 @@ class _ProductListPageState extends State<ProductListPage> {
     setState(() => products = filtered);
   }
 
+
   // ================= ACTIVE OFFER =================
   Map<String, dynamic>? getActiveOffer(Map product) {
-    if (product['offers'] == null || product['offers'].isEmpty) return null;
+    if (product['offers'] == null) return null;
 
-    final offer = product['offers'][0];
+    final List offers = product['offers'];
+    if (offers.isEmpty) return null;
+
     final now = DateTime.now();
-    final start = DateTime.parse(offer['start_date']);
-    final end = DateTime.parse(offer['end_date']);
 
-    if (!now.isBefore(start) && !now.isAfter(end)) {
-      return offer;
+    for (var offer in offers) {
+      if (offer['start_date'] == null || offer['end_date'] == null) continue;
+
+      final start = DateTime.parse(offer['start_date']);
+
+      // 🔥 Offer valid till end of expiry day (11:59 PM)
+      final endRaw = DateTime.parse(offer['end_date']);
+      final end = DateTime(
+        endRaw.year,
+        endRaw.month,
+        endRaw.day,
+        23,
+        59,
+        59,
+      );
+
+      // ✅ Ignore expired offers automatically
+      if (now.isAfter(start.subtract(const Duration(seconds: 1))) &&
+          now.isBefore(end)) {
+        return offer;
+      }
     }
-    return null;
+
+    return null; // expired offers automatically removed
   }
 
-  // ================= FINAL PRICE =================
+
+// ================= FINAL PRICE =================
   num calculateFinalPrice(Map product) {
     final int price = product['price'];
     final offer = getActiveOffer(product);
 
     if (offer == null) return price;
 
+    num finalPrice;
+
     if (offer['discount_type'] == 'percentage') {
-      return price - ((price * offer['discount_value']) ~/ 100);
+      finalPrice = price - ((price * offer['discount_value']) / 100);
     } else {
-      return price - offer['discount_value'];
+      finalPrice = price - offer['discount_value'];
     }
+
+    if (finalPrice < 0) finalPrice = 0;
+
+    return finalPrice.round();
   }
+
 
   // ================= ADD TO CART =================
   Future<void> addToCart(Map product) async {
@@ -261,12 +297,26 @@ class _ProductListPageState extends State<ProductListPage> {
     final offer = getActiveOffer(product);
     final finalPrice = calculateFinalPrice(product);
 
+
+
     final existing = await supabase
         .from('cart')
         .select('id, quantity')
         .eq('customer_id', userId)
         .eq('product_id', product['id'])
         .maybeSingle();
+    final int availableStock = product['stock'] ?? 0;
+
+    if (qty > availableStock) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Only $availableStock available"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
 
     if (existing != null) {
       await supabase.from('cart').update({
@@ -367,6 +417,18 @@ class _ProductListPageState extends State<ProductListPage> {
           final qty = quantities[product['id']] ?? 1;
           final offer = getActiveOffer(product);
           final finalPrice = calculateFinalPrice(product);
+          bool endsToday = false;
+
+          if (offer != null) {
+            final endDate = DateTime.parse(offer['end_date']);
+            final now = DateTime.now();
+
+            endsToday =
+                endDate.year == now.year &&
+                    endDate.month == now.month &&
+                    endDate.day == now.day;
+          }
+
           final farmerName =
               product['profiles']?['name'] ?? 'Farmer';
           final distance =
@@ -418,13 +480,81 @@ class _ProductListPageState extends State<ProductListPage> {
                               fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          offer != null
-                              ? "₹${product['price']} → ₹$finalPrice"
-                              : "₹${product['price']} ${product['price_unit'] ?? ''}",
+                          "Available: ${product['stock']} ${product['price_unit'] ?? 'kg'}",
                           style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold),
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
+
+                        offer != null
+                            ? Row(
+                          children: [
+                            Text(
+                              "₹${product['price']}",
+                              style: const TextStyle(
+                                decoration: TextDecoration.lineThrough,
+                                color: Colors.grey,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              "₹$finalPrice",
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
+                        )
+                            : Text(
+                          "₹${product['price']} ${product['price_unit'] ?? ''}",
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        if (offer != null)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: endsToday ? Colors.red : Colors.orange,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              endsToday ? "Offer ends today!" : "Limited time offer",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        if (offer != null)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.orangeAccent,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              offer['discount_type'] == 'percentage'
+                                  ? "${offer['discount_value']}% OFF"
+                                  : "₹${offer['discount_value']} OFF",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+
+
                         Text(
                           "Farmer: $farmerName • $distance km",
                           style: const TextStyle(
@@ -448,10 +578,12 @@ class _ProductListPageState extends State<ProductListPage> {
                                 Text(qty.toString()),
                                 IconButton(
                                   icon: const Icon(Icons.add_circle),
-                                  onPressed: () => setState(() =>
-                                  quantities[product['id']] =
-                                      qty + 1),
+                                  onPressed: qty < (product['stock'] ?? 0)
+                                      ? () => setState(() =>
+                                  quantities[product['id']] = qty + 1)
+                                      : null,
                                 ),
+
                               ],
                             ),
                             ElevatedButton(

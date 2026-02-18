@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -21,6 +22,12 @@ class _DeliveryRequestsPageState extends State<DeliveryRequestsPage> {
     fetchRequests();
   }
 
+  // 🔐 SECURE RANDOM OTP GENERATOR
+  String generateOtp() {
+    final random = Random();
+    return (1000 + random.nextInt(9000)).toString();
+  }
+
   // ✅ FETCH OPEN DELIVERY REQUESTS
   Future<void> fetchRequests() async {
     try {
@@ -34,7 +41,7 @@ class _DeliveryRequestsPageState extends State<DeliveryRequestsPage> {
           ''')
           .eq('delivery_type', 'delivery_partner')
           .eq('status', 'Searching Delivery Partner')
-          .filter('delivery_partner_id', 'is', null);
+          .filter('delivery_partner_id', 'is',null);
 
       if (!mounted) return;
 
@@ -49,28 +56,46 @@ class _DeliveryRequestsPageState extends State<DeliveryRequestsPage> {
     }
   }
 
-  // ✅ ACCEPT ORDER
+  // ✅ ACCEPT ORDER + GENERATE OTP
   Future<void> acceptOrder(String orderId) async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
     try {
-      await supabase.from('orders').update({
+      final pickupOtp = generateOtp();
+      final deliveryOtp = generateOtp();
+
+      // 🔒 Only accept if still unassigned
+      final response = await supabase
+          .from('orders')
+          .update({
         'delivery_partner_id': user.id,
         'status': 'Delivery Partner Assigned',
-      }).eq('id', orderId);
+        'pickup_otp': pickupOtp,
+        'delivery_otp': deliveryOtp,
+      })
+          .eq('id', orderId)
+          .filter('delivery_partner_id', 'is',null)
+          .select();
+
+      if (response.isEmpty) {
+        throw "Order already accepted by another delivery partner";
+      }
 
       await fetchRequests();
 
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Order accepted successfully"),
+        SnackBar(
+          content: Text(
+              "Order accepted ✅\nPickup OTP: $pickupOtp"),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Accept failed: $e"),
@@ -115,7 +140,8 @@ class _DeliveryRequestsPageState extends State<DeliveryRequestsPage> {
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                  CrossAxisAlignment.start,
                   children: [
                     Text(
                       "Customer: $customerName",
@@ -144,8 +170,8 @@ class _DeliveryRequestsPageState extends State<DeliveryRequestsPage> {
                         ),
                         onPressed: () =>
                             acceptOrder(order['id']),
-                        child:
-                        const Text("Accept Delivery"),
+                        child: const Text(
+                            "Accept Delivery"),
                       ),
                     ),
                   ],

@@ -52,7 +52,6 @@ class _FarmerOrdersState extends State<FarmerOrders>
       if (!mounted) return;
 
       setState(() {
-        // ✅ FIX 1: Handle BOTH old + new values safely
         directOrders = data.where((o) =>
         o['delivery_type'] == 'direct_farmer' ||
             o['delivery_type'] == 'direct'
@@ -89,6 +88,8 @@ class _FarmerOrdersState extends State<FarmerOrders>
         return Colors.blue;
       case 'Ready for Pickup':
         return Colors.deepPurple;
+      case 'Delivery Partner Assigned':
+        return Colors.grey;
       case 'Delivered':
         return Colors.green;
       case 'Rejected':
@@ -154,7 +155,6 @@ class _FarmerOrdersState extends State<FarmerOrders>
 
             // ================= DIRECT FARMER FLOW =================
 
-            // ACCEPT / REJECT
             if (isDirect && order['status'] == 'Placed')
               Row(
                 children: [
@@ -184,7 +184,6 @@ class _FarmerOrdersState extends State<FarmerOrders>
                 ],
               ),
 
-            // VERIFY OTP
             if (isDirect &&
                 order['status'] == 'Ready for Pickup' &&
                 order['pickup_otp'] != null)
@@ -210,6 +209,43 @@ class _FarmerOrdersState extends State<FarmerOrders>
                     },
                     child: const Text("Verify Customer OTP"),
                   ),
+                ),
+              ),
+
+            // ================= DELIVERY PARTNER OTP DISPLAY =================
+
+            if (!isDirect &&
+                order['status'] == 'Delivery Partner Assigned' &&
+                order['pickup_otp'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Pickup OTP for Delivery Partner:",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        order['pickup_otp'].toString(),
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
@@ -247,22 +283,17 @@ class _FarmerOrdersState extends State<FarmerOrders>
           : TabBarView(
         controller: _tabController,
         children: [
-          // DIRECT ORDERS
           directOrders.isEmpty
               ? const Center(child: Text("No direct orders"))
               : ListView(
-            children: directOrders
-                .map((o) => orderCard(o, true))
-                .toList(),
+            children:
+            directOrders.map((o) => orderCard(o, true)).toList(),
           ),
-
-          // DELIVERY PARTNER ORDERS
           deliveryOrders.isEmpty
               ? const Center(child: Text("No delivery partner orders"))
               : ListView(
-            children: deliveryOrders
-                .map((o) => orderCard(o, false))
-                .toList(),
+            children:
+            deliveryOrders.map((o) => orderCard(o, false)).toList(),
           ),
         ],
       ),

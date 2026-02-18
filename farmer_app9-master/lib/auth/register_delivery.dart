@@ -1,5 +1,9 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_helper.dart';
 
@@ -11,6 +15,8 @@ class RegisterDelivery extends StatefulWidget {
 }
 
 class _RegisterDeliveryState extends State<RegisterDelivery> {
+  final supabase = Supabase.instance.client;
+
   final nameController = TextEditingController();
   final mobileController = TextEditingController();
   final emailController = TextEditingController();
@@ -19,6 +25,13 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
   final aadharController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
+
+  File? selectedImage;
+  Uint8List? webImage;
+
+  bool loading = false;
+
+  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +44,26 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+
+            // 🔥 PROFILE IMAGE
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 55,
+                backgroundColor: Colors.grey[300],
+                backgroundImage: kIsWeb
+                    ? (webImage != null ? MemoryImage(webImage!) : null)
+                    : (selectedImage != null
+                    ? FileImage(selectedImage!)
+                    : null) as ImageProvider?,
+                child: (selectedImage == null && webImage == null)
+                    ? const Icon(Icons.camera_alt, size: 35)
+                    : null,
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
             _input("Name", nameController),
             _input("Mobile Number", mobileController,
                 keyboard: TextInputType.phone),
@@ -47,9 +80,14 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: _registerDelivery,
-                child: const Text("Register", style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                ),
+                onPressed: loading ? null : _registerDelivery,
+                child: loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("Register",
+                    style: TextStyle(fontSize: 18)),
               ),
             ),
           ],
@@ -58,7 +96,28 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
     );
   }
 
-  // ================= REGISTER LOGIC =================
+  // ================= IMAGE PICKER =================
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked =
+    await picker.pickImage(source: ImageSource.gallery);
+
+    if (picked != null) {
+      if (kIsWeb) {
+        final bytes = await picked.readAsBytes();
+        setState(() {
+          webImage = bytes;
+        });
+      } else {
+        setState(() {
+          selectedImage = File(picked.path);
+        });
+      }
+    }
+  }
+
+  // ================= REGISTER =================
 
   Future<void> _registerDelivery() async {
     final name = nameController.text.trim();
@@ -70,7 +129,6 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
     final password = passwordController.text.trim();
     final confirmPassword = confirmPasswordController.text.trim();
 
-    // 🔐 VALIDATIONS
     if (name.isEmpty ||
         mobile.isEmpty ||
         email.isEmpty ||
@@ -80,16 +138,6 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
         password.isEmpty ||
         confirmPassword.isEmpty) {
       _showMsg("All fields are required");
-      return;
-    }
-
-    if (!email.contains('@')) {
-      _showMsg("Enter a valid email");
-      return;
-    }
-
-    if (password.length < 6) {
-      _showMsg("Password must be at least 6 characters");
       return;
     }
 
@@ -103,19 +151,41 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
       return;
     }
 
+    setState(() => loading = true);
+
     try {
-      // 1️⃣ AUTH SIGN UP
+      // 1️⃣ CREATE AUTH USER
       final auth = await SupabaseHelper.signUp(
         email: email,
         password: password,
       );
 
       final user = auth.user;
-      if (user == null) {
-        throw Exception("User creation failed");
+      if (user == null) throw Exception("User creation failed");
+
+      String? imageUrl;
+
+      // 2️⃣ UPLOAD IMAGE IF SELECTED
+      if (selectedImage != null || webImage != null) {
+        final fileName =
+            "${user.id}-${DateTime.now().millisecondsSinceEpoch}.jpg";
+
+        if (kIsWeb) {
+          await supabase.storage
+              .from('profile_photos')
+              .uploadBinary(fileName, webImage!);
+        } else {
+          await supabase.storage
+              .from('profile_photos')
+              .upload(fileName, selectedImage!);
+        }
+
+        imageUrl = supabase.storage
+            .from('profile_photos')
+            .getPublicUrl(fileName);
       }
 
-      // 2️⃣ INSERT PROFILE (NO CHECK NEEDED)
+      // 3️⃣ INSERT PROFILE
       await SupabaseHelper.insertProfile({
         'id': user.id,
         'role': 'delivery',
@@ -125,6 +195,7 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
         'vehicle': vehicle,
         'location': location,
         'aadhar': aadhar,
+        'profile_image': imageUrl,
       });
 
       _showMsg("Delivery partner registered successfully");
@@ -134,6 +205,8 @@ class _RegisterDeliveryState extends State<RegisterDelivery> {
       _showMsg(e.message);
     } catch (e) {
       _showMsg("Registration failed");
+    } finally {
+      setState(() => loading = false);
     }
   }
 

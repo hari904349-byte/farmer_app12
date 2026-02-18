@@ -52,17 +52,18 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 10),
 
               Text(
-                AppStrings.text(
-                  widget.role == 'customer'
-                      ? 'welcome_customer'
-                      : 'welcome_farmer',
-                  langProvider.language,
-                ),
+                widget.role == 'customer'
+                    ? "Welcome Customer"
+                    : widget.role == 'farmer'
+                    ? "Welcome Farmer"
+                    : "Welcome Delivery",
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
+
 
               const SizedBox(height: 30),
 
@@ -161,8 +162,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ================= LOGIN LOGIC =================
+// ================= LOGIN LOGIC =================
   Future<void> _login() async {
-    final input = loginController.text.trim().replaceAll(' ', '');
+    final input = loginController.text.trim();
     final password = passwordController.text.trim();
 
     if (input.isEmpty || password.isEmpty) {
@@ -175,33 +177,49 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       String email;
 
+      // ✅ If user entered email directly
       if (input.contains('@')) {
         email = input;
       } else {
-        String mobile = input.startsWith('+91')
-            ? input.substring(3)
-            : input;
+        // ✅ Clean mobile number
+        String mobile = input.replaceAll(' ', '');
 
+        // remove +91 if entered
+        if (mobile.startsWith('+91')) {
+          mobile = mobile.substring(3);
+        }
+
+        // also try with +91
         final profile = await supabase
             .from('profiles')
             .select('email')
-            .eq('mobile', mobile)
+            .or('mobile.eq.$mobile,mobile.eq.+91$mobile')
             .maybeSingle();
 
         if (profile == null) {
           _show("Mobile number not registered");
+          setState(() => loading = false);
           return;
         }
 
         email = profile['email'];
       }
 
-      await supabase.auth.signInWithPassword(
+      // ✅ Sign in using email + password
+      final response = await supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
 
-      final user = supabase.auth.currentUser!;
+      if (response.user == null) {
+        _show("Invalid credentials");
+        setState(() => loading = false);
+        return;
+      }
+
+      final user = response.user!;
+
+      // ✅ Check correct role
       final roleData = await supabase
           .from('profiles')
           .select('role')
@@ -209,7 +227,9 @@ class _LoginScreenState extends State<LoginScreen> {
           .single();
 
       if (roleData['role'] != widget.role) {
+        await supabase.auth.signOut();
         _show("You are not registered as ${widget.role}");
+        setState(() => loading = false);
         return;
       }
 
@@ -217,6 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
         '/${widget.role}_dashboard',
       );
+
     } on AuthException catch (e) {
       _show(e.message);
     } catch (e) {
@@ -225,6 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => loading = false);
     }
   }
+
 
   void _goToRegister() {
     if (widget.role == 'customer') {

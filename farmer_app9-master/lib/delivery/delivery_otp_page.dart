@@ -70,6 +70,20 @@ class _DeliveryOtpPageState extends State<DeliveryOtpPage> {
         'delivered_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.orderId);
 
+      // 🔥 Reduce product stock after delivery
+      final orderItems = await supabase
+          .from('order_items')
+          .select('product_id, quantity')
+          .eq('order_id', widget.orderId);
+
+      for (var item in orderItems) {
+        await supabase.rpc('decrease_stock', params: {
+          'p_id': item['product_id'],
+          'qty': item['quantity'],
+        });
+      }
+
+
       // 🔹 4. SUCCESS
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
