@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../customer/profile_edit_page.dart';
 import 'assigned_orders.dart';
 import 'delivery_requests.dart';
-import '../profile/profile_edit_page.dart';
+import 'delivery_edit_page.dart'; // ✅ USE DELIVERY EDIT PAGE
 import '../onboarding/onboarding_screen.dart';
 
 class DeliveryHome extends StatefulWidget {
@@ -18,7 +17,7 @@ class _DeliveryHomeState extends State<DeliveryHome> {
   final supabase = Supabase.instance.client;
 
   String name = "Delivery Partner";
-  String? avatarUrl;
+  String? profileImage;
   bool loading = true;
 
   @override
@@ -35,13 +34,13 @@ class _DeliveryHomeState extends State<DeliveryHome> {
 
       final data = await supabase
           .from('profiles')
-          .select('name, avatar_url')
+          .select('name, profile_image')
           .eq('id', user.id)
           .single();
 
       setState(() {
         name = data['name'] ?? "Delivery Partner";
-        avatarUrl = data['avatar_url'];
+        profileImage = data['profile_image'];
         loading = false;
       });
     } catch (e) {
@@ -49,6 +48,7 @@ class _DeliveryHomeState extends State<DeliveryHome> {
       setState(() => loading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +72,7 @@ class _DeliveryHomeState extends State<DeliveryHome> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const ProfileEditPage(),
+                    builder: (_) => const DeliveryEditPage(), // ✅ UPDATED
                   ),
                 ).then((_) => _loadProfile());
               },
@@ -84,10 +84,10 @@ class _DeliveryHomeState extends State<DeliveryHome> {
                       radius: 32,
                       backgroundColor: Colors.white,
                       backgroundImage:
-                      avatarUrl != null && avatarUrl!.isNotEmpty
-                          ? NetworkImage(avatarUrl!)
+                      profileImage != null && profileImage!.isNotEmpty
+                          ? NetworkImage(profileImage!)
                           : null,
-                      child: avatarUrl == null
+                      child: profileImage == null
                           ? const Icon(Icons.person,
                           size: 34, color: Colors.green)
                           : null,
@@ -133,7 +133,7 @@ class _DeliveryHomeState extends State<DeliveryHome> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const ProfileEditPage(),
+                    builder: (_) => const DeliveryEditPage(), // ✅ UPDATED
                   ),
                 ).then((_) => _loadProfile());
               },
@@ -180,22 +180,22 @@ class _DeliveryHomeState extends State<DeliveryHome> {
 
             const SizedBox(height: 20),
 
-            // 🔔 DELIVERY REQUESTS
             _homeCard(
               icon: Icons.notifications_active,
               title: "Delivery Requests",
-              subtitle: "New orders waiting for delivery partner",
+              subtitle:
+              "New orders waiting for delivery partner",
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const DeliveryRequestsPage(),
+                    builder: (_) =>
+                    const DeliveryRequestsPage(),
                   ),
                 );
               },
             ),
 
-            // 📦 ASSIGNED ORDERS
             _homeCard(
               icon: Icons.assignment,
               title: "Assigned Orders",
@@ -204,7 +204,8 @@ class _DeliveryHomeState extends State<DeliveryHome> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const AssignedOrdersPage(),
+                    builder: (_) =>
+                    const AssignedOrdersPage(),
                   ),
                 );
               },

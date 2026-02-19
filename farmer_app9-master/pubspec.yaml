@@ -46,3 +46,9 @@ flutter:
 
   assets:
     - assets/icon/app_icon.png
+    - assets/instructions/upload_product.png
+    - assets/instructions/manage_orders.png
+    - assets/instructions/set_offer.png
+    - assets/instructions/earnings.png
+    - assets/instructions/view_ratings.png
+

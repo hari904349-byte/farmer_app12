@@ -13,12 +13,47 @@ import 'show_rating.dart';
 import 'offers_list.dart';
 import 'assign_delivery_page.dart';
 import 'farmer_edit_profile.dart';
+import 'farmer_instruction_page.dart';
 
-
-class FarmerDashboard extends StatelessWidget {
+class FarmerDashboard extends StatefulWidget {
   const FarmerDashboard({super.key});
 
-  // 🔹 Fetch farmer profile (INCLUDING IMAGE)
+  @override
+  State<FarmerDashboard> createState() => _FarmerDashboardState();
+}
+
+class _FarmerDashboardState extends State<FarmerDashboard> {
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInstruction();
+  }
+
+  // ✅ CHECK FIRST TIME LOGIN
+  Future<void> _checkInstruction() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    final data = await Supabase.instance.client
+        .from('profiles')
+        .select('has_seen_instruction')
+        .eq('id', user.id)
+        .single();
+
+    if (data['has_seen_instruction'] == false) {
+      Future.delayed(Duration.zero, () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const FarmerInstructionPage(),
+          ),
+        );
+      });
+    }
+  }
+
+  // 🔹 Fetch farmer profile
   Future<Map<String, dynamic>?> _getFarmerProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return null;
@@ -101,7 +136,6 @@ class FarmerDashboard extends StatelessWidget {
                 decoration: const BoxDecoration(color: Colors.green),
                 child: Row(
                   children: [
-                    // ✅ PROFILE IMAGE LOGIC
                     GestureDetector(
                       onTap: () async {
                         final result = await Navigator.push(
@@ -112,13 +146,14 @@ class FarmerDashboard extends StatelessWidget {
                         );
 
                         if (result == true) {
-                          (context as Element).reassemble(); // refresh drawer
+                          setState(() {}); // ✅ Proper refresh
                         }
                       },
                       child: CircleAvatar(
                         radius: 30,
                         backgroundColor: Colors.white,
-                        backgroundImage: imageUrl != null && imageUrl.isNotEmpty
+                        backgroundImage:
+                        imageUrl != null && imageUrl.isNotEmpty
                             ? NetworkImage(imageUrl)
                             : null,
                         child: imageUrl == null || imageUrl.isEmpty
@@ -129,9 +164,7 @@ class FarmerDashboard extends StatelessWidget {
                         )
                             : null,
                       ),
-
                     ),
-
 
                     const SizedBox(width: 15),
 

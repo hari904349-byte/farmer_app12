@@ -6,7 +6,7 @@ import 'product_list.dart';
 import 'order_status.dart';
 import 'customer_offers.dart';
 import 'cart_page.dart';
-import 'profile_edit_page.dart';
+import 'customer_edit_page.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../core/language_service.dart';
 
@@ -126,7 +126,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const ProfileEditPage(),
+                        builder: (_) => const  CustomerEditPage(),
                       ),
                     );
                     setState(() {});
