@@ -38,6 +38,14 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
   Uint8List? webImageBytes; // web
 
   final ImagePicker _picker = ImagePicker();
+  ImageProvider? _getProfileImage() {
+    if (kIsWeb && webImageBytes != null) {
+      return MemoryImage(webImageBytes!);
+    } else if (!kIsWeb && selectedImage != null) {
+      return FileImage(selectedImage!);
+    }
+    return null;
+  }
 
   // ================= UI =================
 
@@ -59,18 +67,11 @@ class _RegisterFarmerState extends State<RegisterFarmer> {
               child: CircleAvatar(
                 radius: 50,
                 backgroundColor: Colors.grey[300],
-                backgroundImage: kIsWeb
-                    ? (webImageBytes != null
-                    ? MemoryImage(webImageBytes!)
-                    : null)
-                    : (selectedImage != null
-                    ? FileImage(selectedImage!)
-                    : null),
-                child: (kIsWeb && webImageBytes == null) ||
-                    (!kIsWeb && selectedImage == null)
+                backgroundImage: _getProfileImage(),
+                child: (_getProfileImage() == null)
                     ? const Icon(Icons.camera_alt, size: 30)
                     : null,
-              ),
+              )
             ),
 
             const SizedBox(height: 20),

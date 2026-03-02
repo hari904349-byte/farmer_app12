@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../onboarding/onboarding_screen.dart';
 import '../core/language_service.dart';
+import 'help_videos_screen.dart';
 
 // Farmer screens
 import 'add_product.dart';
@@ -94,7 +95,7 @@ class _FarmerDashboardState
         elevation: 0,
         actions: [
 
-          // ✅ COMMUNITY ICON (TOP RIGHT)
+          // COMMUNITY ICON
           IconButton(
             icon: const Icon(Icons.groups),
             tooltip: "Farmer Community",
@@ -104,6 +105,21 @@ class _FarmerDashboardState
                 MaterialPageRoute(
                   builder: (_) =>
                   const FarmerCommunityPage(),
+                ),
+              );
+            },
+          ),
+
+          // ✅ HELP ICON (ADD THIS)
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: "Help & Demo Videos",
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                  const HelpVideoScreen(), // or HelpVideosScreen
                 ),
               );
             },

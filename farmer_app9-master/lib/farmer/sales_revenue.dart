@@ -14,16 +14,18 @@ class _SalesRevenueState extends State<SalesRevenue> {
 
   bool loading = true;
 
-  // Overall
   int totalSales = 0;
   double totalRevenue = 0;
-
-  // Status-based
   double deliveredRevenue = 0;
   double pendingRevenue = 0;
 
-  // Monthly
-  double monthlyRevenue = 0;
+  double todayRevenue = 0;
+  double yesterdayRevenue = 0;
+  double weekRevenue = 0;
+  double monthRevenue = 0;
+  double yearRevenue = 0;
+
+  String selectedFilter = "Today";
 
   @override
   void initState() {
@@ -31,33 +33,43 @@ class _SalesRevenueState extends State<SalesRevenue> {
     _loadRevenueData();
   }
 
-  // ================= LOAD DATA =================
   Future<void> _loadRevenueData() async {
     try {
       final user = supabase.auth.currentUser;
       if (user == null) return;
 
       final now = DateTime.now();
+
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final tomorrowStart = todayStart.add(const Duration(days: 1));
+      final yesterdayStart = todayStart.subtract(const Duration(days: 1));
+      final weekStart =
+      todayStart.subtract(Duration(days: now.weekday - 1));
       final monthStart = DateTime(now.year, now.month, 1);
-      final monthEnd = DateTime(now.year, now.month + 1, 1);
+      final yearStart = DateTime(now.year, 1, 1);
 
       final orders = await supabase
           .from('orders')
           .select('total_amount, status, created_at')
           .eq('farmer_id', user.id);
 
-      totalSales = orders.length;
+      totalSales = 0;
       totalRevenue = 0;
       deliveredRevenue = 0;
       pendingRevenue = 0;
-      monthlyRevenue = 0;
+
+      todayRevenue = 0;
+      yesterdayRevenue = 0;
+      weekRevenue = 0;
+      monthRevenue = 0;
+      yearRevenue = 0;
 
       for (final o in orders) {
         final amount = (o['total_amount'] as num).toDouble();
-        final status = o['status'] as String;
+        final status = (o['status'] as String).toLowerCase();
         final createdAt = DateTime.parse(o['created_at']);
 
-        totalRevenue += amount;
+        totalSales++;
 
         if (status == 'delivered') {
           deliveredRevenue += amount;
@@ -65,10 +77,31 @@ class _SalesRevenueState extends State<SalesRevenue> {
           pendingRevenue += amount;
         }
 
-        if (createdAt.isAfter(monthStart) &&
-            createdAt.isBefore(monthEnd) &&
-            status == 'delivered') {
-          monthlyRevenue += amount;
+// Business revenue includes both
+        totalRevenue += amount;
+
+        if (status != 'delivered') continue;
+
+        if (!createdAt.isBefore(todayStart) &&
+            createdAt.isBefore(tomorrowStart)) {
+          todayRevenue += amount;
+        }
+
+        if (!createdAt.isBefore(yesterdayStart) &&
+            createdAt.isBefore(todayStart)) {
+          yesterdayRevenue += amount;
+        }
+
+        if (!createdAt.isBefore(weekStart)) {
+          weekRevenue += amount;
+        }
+
+        if (!createdAt.isBefore(monthStart)) {
+          monthRevenue += amount;
+        }
+
+        if (!createdAt.isBefore(yearStart)) {
+          yearRevenue += amount;
         }
       }
     } catch (e) {
@@ -78,41 +111,87 @@ class _SalesRevenueState extends State<SalesRevenue> {
     }
   }
 
-  // ================= UI =================
+  double get selectedRevenue {
+    switch (selectedFilter) {
+      case "Today":
+        return todayRevenue;
+      case "Yesterday":
+        return yesterdayRevenue;
+      case "This Week":
+        return weekRevenue;
+      case "This Month":
+        return monthRevenue;
+      case "This Year":
+        return yearRevenue;
+      default:
+        return 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text("Sales & Revenue"),
         backgroundColor: Colors.green,
       ),
       body: loading
           ? const Center(
-        child: CircularProgressIndicator(color: Colors.green),
-      )
+          child:
+          CircularProgressIndicator(color: Colors.green))
           : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _sectionTitle("Overall"),
-            _infoCard("Total Sales", totalSales.toString()),
-            _infoCard(
-                "Total Revenue", "₹${totalRevenue.toStringAsFixed(2)}"),
+
+            _card("Total Sales", totalSales.toString()),
+            _card("Total Revenue",
+                "₹${totalRevenue.toStringAsFixed(2)}"),
+            _card("Delivered Revenue",
+                "₹${deliveredRevenue.toStringAsFixed(2)}"),
+            _card("Pending Revenue",
+                "₹${pendingRevenue.toStringAsFixed(2)}"),
+
+            const SizedBox(height: 25),
+
+            DropdownButtonFormField<String>(
+              value: selectedFilter,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                    borderRadius:
+                    BorderRadius.circular(12)),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: "Today", child: Text("Today")),
+                DropdownMenuItem(
+                    value: "Yesterday",
+                    child: Text("Yesterday")),
+                DropdownMenuItem(
+                    value: "This Week",
+                    child: Text("This Week")),
+                DropdownMenuItem(
+                    value: "This Month",
+                    child: Text("This Month")),
+                DropdownMenuItem(
+                    value: "This Year",
+                    child: Text("This Year")),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  selectedFilter = value!;
+                });
+              },
+            ),
 
             const SizedBox(height: 20),
 
-            _sectionTitle("Order Status"),
-            _infoCard("Delivered Revenue",
-                "₹${deliveredRevenue.toStringAsFixed(2)}"),
-            _infoCard("Pending Revenue",
-                "₹${pendingRevenue.toStringAsFixed(2)}"),
-
-            const SizedBox(height: 30),
-
-            _sectionTitle("Revenue Chart"),
             SizedBox(
-              height: 220,
-              child: BarChart(_barChartData()),
+              height: 280,
+              child: BarChart(_buildChart()),
             ),
           ],
         ),
@@ -120,96 +199,103 @@ class _SalesRevenueState extends State<SalesRevenue> {
     );
   }
 
-  // ================= BAR CHART =================
-  BarChartData _barChartData() {
+  BarChartData _buildChart() {
+    final maxY = selectedRevenue == 0
+        ? 100.0
+        : selectedRevenue + (selectedRevenue * 0.3);
+
     return BarChartData(
-      alignment: BarChartAlignment.spaceAround,
-      maxY: [
-        deliveredRevenue,
-        pendingRevenue,
-        monthlyRevenue,
-      ].reduce((a, b) => a > b ? a : b) +
-          1000,
-      barGroups: [
-        _barGroup(0, deliveredRevenue, Colors.green),
-        _barGroup(1, pendingRevenue, Colors.orange),
-        _barGroup(2, monthlyRevenue, Colors.blue),
-      ],
+      alignment: BarChartAlignment.center,
+      maxY: maxY,
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false,
+        horizontalInterval: maxY / 5,
+      ),
+      borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
-        bottomTitles: AxisTitles(
+        leftTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            getTitlesWidget: (value, _) {
-              switch (value.toInt()) {
-                case 0:
-                  return const Text("Delivered");
-                case 1:
-                  return const Text("Pending");
-                case 2:
-                  return const Text("This Month");
-                default:
-                  return const Text("");
-              }
+            interval: maxY / 5,
+            getTitlesWidget: (value, meta) {
+              return Text(
+                "₹${value.toInt()}",
+                style: const TextStyle(
+                    fontSize: 10, color: Colors.grey),
+              );
             },
           ),
         ),
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: true),
-        ),
-        rightTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        topTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
+        rightTitles:
+        AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles:
+        AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            getTitlesWidget: (value, meta) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  selectedFilter,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold),
+                ),
+              );
+            },
+          ),
         ),
       ),
-      borderData: FlBorderData(show: false),
-    );
-  }
-
-  BarChartGroupData _barGroup(int x, double value, Color color) {
-    return BarChartGroupData(
-      x: x,
-      barRods: [
-        BarChartRodData(
-          toY: value,
-          color: color,
-          width: 22,
-          borderRadius: BorderRadius.circular(6),
+      barGroups: [
+        BarChartGroupData(
+          x: 0,
+          barRods: [
+            BarChartRodData(
+              toY: selectedRevenue,
+              width: 45,
+              borderRadius:
+              BorderRadius.circular(10),
+              gradient: const LinearGradient(
+                colors: [
+                  Colors.green,
+                  Colors.lightGreen
+                ],
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  // ================= UI HELPERS =================
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _infoCard(String title, String value) {
-    return Card(
+  Widget _card(String title, String value) {
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        title: Text(title),
-        trailing: Text(
-          value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              blurRadius: 6)
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment:
+        MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w500)),
+          Text(value,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
+        ],
       ),
     );
   }

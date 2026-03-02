@@ -1,11 +1,11 @@
 name: farm_fresh_connect
-description: "Farm Fresh Connect Application"
+description: Farm Fresh Connect Application
 publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.4
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -13,32 +13,30 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  provider: ^6.0.5
   cupertino_icons: ^1.0.8
+  provider: ^6.1.2
   supabase_flutter: ^2.5.6
   image_picker: ^1.0.4
   shared_preferences: ^2.2.2
   pdf: ^3.10.7
   printing: ^5.12.0
   intl: ^0.20.2
-
   fl_chart: ^0.66.0
   geolocator: ^10.1.0
   geocoding: ^2.1.0
-  record: ^5.0.0
+  record: 4.4.3
   just_audio: ^0.9.36
-  permission_handler: ^11.0.1
+  permission_handler: ^11.3.0
   path_provider: ^2.1.1
+  video_player: ^2.8.2
 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_launcher_icons: ^0.13.1
   flutter_lints: ^6.0.0
 
-# APP ICON CONFIG
 flutter_icons:
   android: true
   ios: true
@@ -55,4 +53,4 @@ flutter:
     - assets/instructions/set_offer.png
     - assets/instructions/earnings.png
     - assets/instructions/view_ratings.png
-
+    - assets/videos/ap1.mp4

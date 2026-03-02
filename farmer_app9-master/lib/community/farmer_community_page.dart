@@ -20,12 +20,15 @@ class _FarmerCommunityPageState
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final supabase = Supabase.instance.client;
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  final Record _record = Record();
   bool isRecording = false;
   String? audioPath;
   @override
+  @override
   void dispose() {
-    _audioRecorder.dispose();
+    _record.dispose();
+    _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -83,30 +86,27 @@ class _FarmerCommunityPageState
     if (user == null) return;
 
     if (!isRecording) {
-
-      final hasPermission = await _audioRecorder.hasPermission();
+      final hasPermission = await _record.hasPermission();
       if (!hasPermission) return;
 
       final dir = await getTemporaryDirectory();
       audioPath =
       '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.m4a';
 
-      await _audioRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-        ),
+      await _record.start(
         path: audioPath!,
+        encoder: AudioEncoder.aacLc,
+        bitRate: 128000,
+        samplingRate: 44100,
       );
 
       setState(() => isRecording = true);
-
     } else {
-
-      await _audioRecorder.stop();
+      final path = await _record.stop();
       setState(() => isRecording = false);
 
-      if (audioPath != null) {
-        await uploadVoice(File(audioPath!));
+      if (path != null) {
+        await uploadVoice(File(path));
       }
     }
   }
