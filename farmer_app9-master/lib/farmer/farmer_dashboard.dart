@@ -162,12 +162,7 @@ class _FarmerDashboardState
               const FarmerOrders(),
             ),
 
-            _homeButton(
-              context,
-              "Assign Delivery Partner",
-              Icons.delivery_dining,
-              const AssignDeliveryPage(),
-            ),
+
 
             _homeButton(
               context,
@@ -327,16 +322,7 @@ class _FarmerDashboardState
                     const FarmerOrders()),
           ),
 
-          _drawerItem(
-            context: context,
-            title:
-            "Assign Delivery Partner",
-            icon:
-            Icons.delivery_dining,
-            onTap: () => _navigate(
-                context,
-                const AssignDeliveryPage()),
-          ),
+
 
           _drawerItem(
             context: context,
