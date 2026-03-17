@@ -53,4 +53,8 @@ flutter:
     - assets/instructions/set_offer.png
     - assets/instructions/earnings.png
     - assets/instructions/view_ratings.png
-    - assets/videos/ap1.mp4
+    - assets/videos/addproduct_video.mp4
+    - assets/videos/offers_video.mp4
+    - assets/videos/orders_video.mp4
+    - assets/videos/received_order_video.mp4
+    - assets/videos/show_rating_video.mp4

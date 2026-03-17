@@ -35,7 +35,7 @@ Future<void> main() async {
     ),
   );
 
-  // ✅ LISTEN AFTER APP STARTS
+
   WidgetsBinding.instance.addPostFrameCallback((_) {
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
@@ -62,7 +62,7 @@ class FarmFreshConnectApp extends StatelessWidget {
           title: 'Farm Fresh Connect',
           theme: AppTheme.lightTheme,
 
-          // ✅ CORRECT LOCALIZATION SETUP
+
           locale: Locale(languageProvider.language),
           supportedLocales: const [
             Locale('en'),

@@ -17,7 +17,23 @@ class HelpVideoScreen extends StatelessWidget {
         children: const [
           VideoCard(
             title: "How to Add Product",
-            assetPath: "assets/videos/ap1.mp4",
+            assetPath: "assets/videos/addproduct_video.mp4",
+          ),
+          VideoCard(
+            title: "How to Check Received Orders",
+            assetPath: "assets/videos/received_order_video.mp4",
+          ),
+          VideoCard(
+            title: "How to Accept Orders",
+            assetPath: "assets/videos/orders_video.mp4",
+          ),
+          VideoCard(
+            title: "How to Add Offers and Discount",
+            assetPath: "assets/videos/offers_video.mp4",
+          ),
+          VideoCard(
+            title: "How to See rating from Customer",
+            assetPath: "assets/videos/show_rating_video.mp4",
           ),
         ],
       ),
